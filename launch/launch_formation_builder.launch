@@ -1,0 +1,6 @@
+<?xml version="1.0" ?>
+<launch>
+
+    <!-- Start print_node -->
+    <node name="map_reader" pkg="formation_builder" type="map_reader.py" output="screen" />
+</launch>

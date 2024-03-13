@@ -1,0 +1,6 @@
+<?xml version="1.0" ?>
+<launch>
+
+    <!-- Start print_node -->
+    <node name="ma_occ_grid" pkg="formation_builder" type="occupancy_grid.py" output="screen" />
+</launch>
