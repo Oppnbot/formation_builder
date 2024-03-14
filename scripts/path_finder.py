@@ -40,6 +40,7 @@ from formation_builder.srv import TransformPixelToWorld, TransformPixelToWorldRe
 from geometry_msgs.msg import Pose, Point
 
 from visualization_msgs.msg import Marker, MarkerArray
+import matplotlib.pyplot as plt
 
 class Waypoint():
     def __init__(self, pixel_pos : tuple[int, int], occupied_from: float, occupied_until : float = float('inf'), world_pos : tuple[float, float]|None = None, previous_waypoint:Waypoint|None = None):
@@ -58,6 +59,7 @@ class Waypoint():
         self.occupied_from: float = occupied_from               # time when waypoint first becomes occupied, making it unavailable for other robots [s]
         self.occupied_until: float = occupied_until              # time when waypoint becomes free, making it available for other robots [s]
         self.previous_waypoint : Waypoint|None = previous_waypoint
+        self.is_waiting_point : bool = False
 
     def __eq__(self, __value: Waypoint) -> bool:
         return self.pixel_pos == __value.pixel_pos
@@ -69,6 +71,7 @@ class Waypoint():
         waypoint_msg : WaypointMsg = WaypointMsg()
         waypoint_msg.occupied_from = self.occupied_from
         waypoint_msg.occupied_until = self.occupied_until
+        waypoint_msg.is_waiting_point = self.is_waiting_point
         
         if self.world_pos is not None:
             world_pos : Pose = Pose()
@@ -94,7 +97,7 @@ class PathFinder:
         self.check_dynamic_obstacles : bool = True
         self.dynamic_visualization : bool = False # publishes timing map after every step, very expensive
         self.kernel_size : int = 3 #!kernel size -> defines the safety margins for dynamic and static obstacles; grid_size * kernel_size = robot_size
-        self.speed : float = 0.5
+        self.speed : float = 0.5 #todo: config or something smarter. for now 1.5 seems to be fine
         # -------- CONFIG END --------
         
         self.id: int = planner_id
@@ -288,16 +291,20 @@ class PathFinder:
         
         rospy.loginfo(f"[Planner {self.id}] stopped after a total of {iterations} iterations")
         loop_end_time = time.time()
-        rospy.loginfo(f"[Planner {self.id}] planned path! Dijkstras main loop took {loop_end_time-loop_time_start:.6f}s")
+        rospy.loginfo(f"[Planner {self.id}] planned path! Djikstras main loop took {loop_end_time-loop_time_start:.6f}s")
         
 
         #* --- Reconstruct Path ---
         pathfind_start_time = time.time()
         waypoints : list[Waypoint] = []
         current_waypoint : Waypoint | None = goal_waypoint
+        max_travel_time : float = max(neighbor_costs)
         while current_waypoint:
             if current_waypoint.previous_waypoint is not None:
-                current_waypoint.previous_waypoint.occupied_until = (current_waypoint.occupied_from + 1)* 1.2 + 3.0 # todo: define different metrics here #*1.3+1.0
+                current_waypoint.previous_waypoint.occupied_until = (current_waypoint.occupied_from + 1)* 2.2 + 3.0 # todo: define different metrics here #*1.3+1.0
+                # Waiting Point Detection; A Waypoint is considered to be a waiting point if the following waypoint wont be reached in the max_travel_time between two point * small_factor
+                if current_waypoint.occupied_from - current_waypoint.previous_waypoint.occupied_from > max_travel_time * 1.2:
+                    current_waypoint.previous_waypoint.is_waiting_point = True
             waypoints.append(current_waypoint)
             current_waypoint = current_waypoint.previous_waypoint
             if self.dynamic_visualization:
@@ -307,6 +314,14 @@ class PathFinder:
         bloated_waypoints : list[Waypoint] = self.bloat_path(waypoints)
 
         
+        #plot_values = [waypoint.occupied_from for waypoint in waypoints]
+        #first_derivative = np.gradient(plot_values)
+        #second_derivative = np.gradient(first_derivative)
+        #plt.title(f"planner {self.id}")
+        #plt.plot(plot_values, marker='o', linestyle='-')
+        #plt.plot(first_derivative, marker='o', linestyle='-', label='1. derivative')
+        #plt.plot(second_derivative, marker='o', linestyle='-', label='2. derivative')
+        #plt.show()
 
         pathfind_done_time = time.time()
         rospy.loginfo(f"[Planner {self.id}] Found a path. This took {pathfind_done_time-pathfind_start_time:.6f}s")

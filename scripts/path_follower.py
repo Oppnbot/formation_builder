@@ -11,6 +11,7 @@ import numpy as np
 
 from geometry_msgs.msg import Twist, PoseStamped, Point, Quaternion, Pose
 from formation_builder.msg import Trajectory, Waypoint
+from nav_msgs.msg import Path
 
 
 class PathFollower:
@@ -19,11 +20,13 @@ class PathFollower:
         rospy.loginfo(f"[Follower {robot_id}] Initializing!")
         self.robot_id : int = robot_id
         self.trajectory : Trajectory | None = None
-        self.trajectory_start_time : float = time.time()
+        self.trajectory_start_time : rospy.Time = rospy.Time.now()
         self.robot_pose : Pose | None = None
 
         rospy.Subscriber('formation_builder/trajectory', Trajectory, self.trajectory_update)
         rospy.Subscriber(f'/mir{self.robot_id}/mir_pose_simple', Pose, self.update_pose)
+        self.mbf_mb_exe_path_ac = actionlib.SimpleActionClient(f"/mir{self.robot_id}/move_base_flex/exe_path", mbf_msgs.ExePathAction)
+        self.mbf_mb_exe_path_ac.wait_for_server(rospy.Duration(20))
 
         self.publisher = rospy.Publisher(f'/mir{self.robot_id}/move_base_simple/goal', PoseStamped, queue_size=10)
         self.reached_waypoints : int = 0
@@ -46,13 +49,45 @@ class PathFollower:
         if trajectory.planner_id != self.robot_id:
             return None
         rospy.loginfo(f"[Follower {self.robot_id}] Received a new Trajectory.")
+        
         self.trajectory = trajectory
         self.reached_waypoints = 0
-        self.trajectory_start_time = time.time()
+        self.trajectory_start_time = rospy.Time.now()
+
+        if trajectory.path is None:
+            rospy.logwarn(f"[Follower {self.robot_id}] Received an empty path.")
+            return None
+        
+        path_segments : list[Path] = []
+        segment : Path = Path()
+        segment.poses = []
+        waypoints : list[Waypoint] = trajectory.path
+        for index, waypoint in enumerate(waypoints):
+            if waypoint.is_waiting_point:
+                segment : Path = Path()
+                segment.poses = []
+                path_segments.append(segment)
+            pose : PoseStamped = PoseStamped()
+            pose.header.stamp = self.trajectory_start_time + rospy.Duration(int(np.round(waypoint.occupied_from)))
+            pose.header.seq = index
+            pose.header.frame_id = "map"
+            pose.pose = waypoint.world_position
+            pose.pose.orientation = Quaternion(0.0, 0.0, 0.0, 1.0)
+            segment.poses.append(pose)
+        path_segments.append(segment)
+
+        for path_segment in path_segments:
+            self.mbf_mb_exe_path_ac.send_goal(mbf_msgs.ExePathGoal(path=path_segment, controller = "DWAPlannerROS"))
+            self.mbf_mb_exe_path_ac.wait_for_result()
+            rospy.logwarn(f"[Follower {self.robot_id}] Finished Segment")
+            rate = rospy.Rate(10)
+            rate.sleep()
         return None
     
 
     def follow_trajectory(self) -> None:
+        return None
+        #! deprecated
         rate : rospy.Rate = rospy.Rate(1)
         while not rospy.is_shutdown():
             self.move_to_waypoint()
@@ -61,6 +96,8 @@ class PathFollower:
     
 
     def move_to_waypoint(self) -> None:
+        return None
+        #! deprecated
         if self.robot_pose is None:
             rospy.logwarn(f"[Follower {self.robot_id}] Pose is None.")
             return None
