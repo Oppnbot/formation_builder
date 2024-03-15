@@ -1,6 +1,7 @@
 #!/usr/bin/env python3.8
 # -*- coding: utf-8 -*-
 
+
 from __future__ import annotations
 
 import time
@@ -24,14 +25,19 @@ class PathFollower:
         self.trajectory_start_time : float = time.time()
         self.robot_pose : Pose | None = None
 
-        self.max_linear_speed : float = 1.2
-        self.max_angular_speed : float = 1.0
-        self.lookahead_distance : float = 1.0
+        # ---- Config Zone ----
+        self.lookahead_distance : float = 1.0   # higher distance -> smoother curves when driving but might leave path.
+        self.max_linear_speed : float = 1.2     # [m/s] max driving speed
+        self.max_angular_speed : float = 1.0    # [rad/s] max rotation speed
+        
+        self.goal_tolerance : float = 0.05 # [m] distance at which the goal position is considered to be reached
+        self.rotation_tolerance : float = 0.002 # [rad] angle at which the goal rotation is considered to be reached
+        self.slowdown_angle : float = 0.25 # [rad] angle at which the slowdown begins. might take longer to reach the desired orientation but will allow for higher precision
+        # ---- End Config ----
+        
         self.robot_yaw : float = 0.0
-
-        self.k_linear : float = 1.0
-        self.k_angular:float = 2.0
-
+        self.k_linear : float = 1.0 # higher value -> faster linear movement value > 1.0 might lead to start/stop behaviour
+        self.k_angular:float = 2.0 # higher value -> faster turnings
 
         rospy.Subscriber('formation_builder/trajectory', Trajectory, self.trajectory_update)
         rospy.Subscriber(f'/mir{self.robot_id}/mir_pose_simple', Pose, self.update_pose)
@@ -45,8 +51,21 @@ class PathFollower:
         #self.movement_client : actionlib.SimpleActionClient = actionlib.SimpleActionClient(f"/mir{self.robot_id}/move_base_flex/move_base", mbf_msgs.MoveBaseAction)
         #rospy.loginfo(f"[Follower {robot_id}] Connected!")
 
-        self.follow_trajectory()
+        #self.follow_trajectory()
+        self.stop_robot() #for safety reasons, dont remove this
         rospy.spin()
+        return None
+    
+
+    def stop_robot(self) -> None:
+        twist_msg = Twist()
+        twist_msg.linear.x = 0.0
+        twist_msg.linear.y = 0.0
+        twist_msg.linear.z = 0.0
+        twist_msg.angular.x = 0.0
+        twist_msg.angular.y = 0.0
+        twist_msg.angular.z = 0.0
+        self.cmd_publisher.publish(twist_msg)
         return None
     
 
@@ -64,7 +83,7 @@ class PathFollower:
         return np.arctan2(waypoint.world_position.position.y - robot_pose.position.y, waypoint.world_position.position.x - robot_pose.position.x)
 
 
-    def update_target_point(self) -> None:
+    def update_target_point(self) -> Waypoint | None:
         if self.trajectory is None or self.robot_pose is None or self.trajectory.path is None:
             rospy.logwarn(f"[Follower {self.robot_id}] Can't update the target point since Planner is not initialized")
             return None
@@ -100,23 +119,21 @@ class PathFollower:
             marker.scale.z = 0.2
             marker_pub.publish(marker)
 
-
-        
         if self.target_waypoint is None:
             self.target_waypoint = self.trajectory.start_waypoint
         if self.target_waypoint == self.trajectory.goal_waypoint:
-            return None
+            return self.trajectory.goal_waypoint
+        
         distance_to_target : float = self.get_distance(self.robot_pose, self.target_waypoint)
         while distance_to_target < self.lookahead_distance and len(self.trajectory.path) > self.reached_waypoints:
             #if rospy.Time.now().secs + (distance_to_target / self.max_linear_speed) < self.target_waypoint.occupied_from + self.trajectory_start_time.secs:
             if time.time() - self.trajectory_start_time < self.trajectory.path[self.reached_waypoints].occupied_from:
-                rospy.loginfo(f"[Follower {self.robot_id}] is too fast. expected to arrive at target at {time.time() + (distance_to_target / self.max_linear_speed)} but waypoint is occupied from {self.target_waypoint.occupied_from + self.trajectory_start_time}")
+                #rospy.loginfo(f"[Follower {self.robot_id}] is too fast. expected to arrive at target at {time.time() + (distance_to_target / self.max_linear_speed)} but waypoint is occupied from {self.target_waypoint.occupied_from + self.trajectory_start_time}")
                 break
             self.reached_waypoints += 1
             self.target_waypoint = self.trajectory.path[self.reached_waypoints]
-            
             distance_to_target : float = self.get_distance(self.robot_pose, self.target_waypoint)
-        return None
+        return self.trajectory.path[self.reached_waypoints]
 
 
     def trajectory_update(self, trajectory : Trajectory) -> None:
@@ -127,147 +144,105 @@ class PathFollower:
         self.reached_waypoints = 0
         self.target_waypoint = trajectory.start_waypoint
         self.trajectory_start_time = time.time()
-        self.follow_trajectory()
+        rate : rospy.Rate = rospy.Rate(100)
+
+
+        while not rospy.is_shutdown():
+            if self.follow_trajectory():
+                break
+            rate.sleep()
+
+        while not rospy.is_shutdown():
+            if self.rotate(self.trajectory.goal_waypoint.world_position.orientation.z):
+                break
+            rate.sleep()
+        
+        rospy.loginfo(f"[Follower {self.robot_id}] Done!")
+        self.stop_robot()
         return None
     
 
-    def control_speeds(self, distance_to_target, steering_angle)->tuple[float, float]:
+    def control_speeds(self, distance_to_target, steering_angle) -> tuple[float, float]:
         linear_speed = min(self.max_linear_speed, self.k_linear * distance_to_target)
         angular_speed = self.k_angular * steering_angle
 
         return linear_speed, angular_speed
-
-
-
-
-    def follow_trajectory(self) -> None:
-        rate : rospy.Rate = rospy.Rate(10)
-        while not rospy.is_shutdown():
-            if self.robot_pose is None or self.target_waypoint is None:
-                #rospy.logwarn(f"[Follower {self.robot_id}] Waiting for initialization")
-                continue
-            self.update_target_point()
-            angle_to_target : float = self.get_angle(self.robot_pose, self.target_waypoint)
-            steering_angle : float = angle_to_target - self.robot_yaw
-            if steering_angle > np.pi:
-                steering_angle -= 2 * np.pi
-            elif steering_angle < -np.pi:
-                steering_angle += 2 * np.pi
-
-            distance_to_target = self.get_distance(self.robot_pose, self.target_waypoint)
-            linear_speed, angular_speed = self.control_speeds(distance_to_target, steering_angle)
-
-            twist_msg = Twist()
-            twist_msg.linear.x = linear_speed
-            twist_msg.angular.z = min(self.max_angular_speed, max(-self.max_angular_speed, angular_speed))
-            if abs(steering_angle) > np.pi * 0.3: # stop driving forward if turn is too hard #todo: make this adaptiv
-                twist_msg.linear.x = 0.0
-            self.cmd_publisher.publish(twist_msg)
-
-            rate.sleep()
-            continue
-
-
-
-
-            twist_msg = Twist()
-            #twist_msg.linear.x = self.max_linear_speed
-            twist_msg.linear.x = min(self.max_angular_speed, self.get_distance(self.robot_pose, self.target_waypoint))
-
-
-            steering_direction : float = np.sign(steering_angle)
-            steering_velocity : float = min(steering_angle ** 2, self.max_angular_speed)
-            
-            if steering_velocity > 0.5: #todo: smarter system for hard turns
-                twist_msg.linear.x = 0
-
-
-            twist_msg.angular.z = steering_velocity * steering_direction
-            self.cmd_publisher.publish(twist_msg)
-
-            rate.sleep()
-            continue
-
-
-
-            
-            
-            if abs(steering_angle) > 0.1:
-                twist_msg = Twist()
-                twist_msg.angular.z = self.max_angular_speed if steering_angle > 0 else -self.max_angular_speed
-                self.cmd_publisher.publish(twist_msg)
-            else:
-                twist_msg = Twist()
-                twist_msg.linear.x = self.max_linear_speed
-                self.cmd_publisher.publish(twist_msg)
-            rate.sleep()
-        return None
-
-
-
-
-
-        return None
-        rate : rospy.Rate = rospy.Rate(1)
-        while not rospy.is_shutdown():
-            self.move_to_waypoint()
-            rate.sleep()
-        return None
     
 
-    def move_to_waypoint(self) -> None:
-        return None
-        if self.robot_pose is None:
-            rospy.logwarn(f"[Follower {self.robot_id}] Pose is None.")
-            return None
-        if self.trajectory is None:
-            rospy.logwarn(f"[Follower {self.robot_id}] Trajectory is None.")
-            return None
-        if self.trajectory.path is None:
-            rospy.logwarn(f"[Follower {self.robot_id}] Path is None.")
-            return None
-        if self.reached_waypoints >= len(self.trajectory.path):
-            rospy.logwarn(f"[Follower {self.robot_id}] Waiting for a new path...")
-            return None
+    def get_min_angle(self, angle_1 : float, angle_2 : float) -> float:
+        min_angle : float = angle_1 - angle_2
+        min_angle -= 2*np.pi if min_angle > np.pi else 0.0
+        min_angle += 2*np.pi if min_angle < -np.pi else 0.0
+        return min_angle
+    
+
+    def rotate(self, target_rotation : float) -> bool:
+        angle_error : float = self.get_min_angle(target_rotation, self.robot_yaw)
+            
+        #rospy.loginfo(f"angle error {angle_error}")
+
+        rotation_direction : float = np.sign(angle_error)
+        twist_msg = Twist()
+        twist_msg.linear.x = 0.0
+
+        if abs(angle_error) < self.rotation_tolerance:
+            twist_msg.angular.z = 0.0
+            self.cmd_publisher.publish(twist_msg)
+            rospy.loginfo(f"[Follower {self.robot_id}] Reached the Goal Orientation with a tolerance of {abs(angle_error):.5f} rad")
+            return True
         
-        current_waypoint : Waypoint = self.trajectory.path[self.reached_waypoints]
-        dist_to_waypoint : float = np.abs(current_waypoint.world_position.position.x - self.robot_pose.position.x) + np.abs(current_waypoint.world_position.position.y - self.robot_pose.position.y)
-        grid_size = 2.0 #! get this from map
-
-        if dist_to_waypoint <= grid_size:
-            waypoints : list[Waypoint] = self.trajectory.path
-            if waypoints[self.reached_waypoints + 1].occupied_from < time.time() - self.trajectory_start_time:
-                rospy.loginfo(f"[Follower {self.robot_id}] Reached Waypoint {self.reached_waypoints}")
-                self.reached_waypoints += 1
-                if self.reached_waypoints >= len(self.trajectory.path):
-                    rospy.loginfo(f"[Follower {self.robot_id}] Reached it's goal.")
-                    return None
+        angular_speed : float = self.max_angular_speed
+        min_angular_speed : float = 0.01 * self.max_angular_speed # min angular speed = 1% of max speed. #todo: make this a parameter (?)
+        if abs(angle_error) < self.slowdown_angle:
             
-            pose = PoseStamped()
-            pose.header.stamp = rospy.Time.now()
-            pose.header.frame_id = 'map'
-            pose.pose = current_waypoint.world_position
-            pose.pose.orientation = Quaternion(0.0, 0.0, 0.0, 1.0)
-            self.goal_publisher.publish(pose)
+            angular_speed = self.max_angular_speed * min((abs(angle_error) / self.slowdown_angle), 1.0)
+
+        angular_speed = min(self.max_angular_speed, max(min_angular_speed, angular_speed))
+        angular_speed *= rotation_direction
+
+        twist_msg.angular.z = angular_speed
+        self.cmd_publisher.publish(twist_msg)
+        return False
 
 
-    
-    
-    #def move_to_waypoint(self, waypoint : Waypoint) -> bool:
-    #    goal  : mbf_msgs.MoveBaseGoal = mbf_msgs.MoveBaseGoal()
-    #    goal.target_pose.header.frame_id = "map"
-    #    goal.target_pose.header.stamp = rospy.Time.now()
-    #    goal.target_pose.pose = waypoint.world_position
-    #    self.movement_client.send_goal(goal)
-    #    self.movement_client.wait_for_result()
-    #
-    #    if self.movement_client.get_state() == actionlib.GoalStatus.SUCCEEDED:
-    #        rospy.loginfo("Reached Goal")
-    #        return True
-    #    else:
-    #        rospy.loginfo("Failed to reach goal...")
-    #        return False
-    #    return False
+
+    def follow_trajectory(self) -> bool:
+        if self.robot_pose is None or self.target_waypoint is None:
+            #rospy.logwarn(f"[Follower {self.robot_id}] Waiting for initialization")
+            return False
+        
+        target_waypoint : Waypoint | None = self.update_target_point()
+        if target_waypoint is None:
+            return False
+        
+        distance_to_target : float = self.get_distance(self.robot_pose, target_waypoint)
+        
+        if distance_to_target < self.goal_tolerance:
+            rospy.loginfo(f"[Follower {self.robot_id}] Reached the Goal Position with a tolerance of {distance_to_target:.3f} m")
+            twist_msg = Twist()
+            twist_msg.linear.x = 0.0
+            twist_msg.angular.z = 0.0
+            self.cmd_publisher.publish(twist_msg)
+            return True
+
+        angle_to_target : float = self.get_angle(self.robot_pose, self.target_waypoint)
+        steering_angle : float = angle_to_target - self.robot_yaw
+        if steering_angle > np.pi:
+            steering_angle -= 2 * np.pi
+        elif steering_angle < -np.pi:
+            steering_angle += 2 * np.pi
+
+        distance_to_target = self.get_distance(self.robot_pose, self.target_waypoint)
+        linear_speed, angular_speed = self.control_speeds(distance_to_target, steering_angle)
+
+        twist_msg = Twist()
+        twist_msg.linear.x = linear_speed * max(np.cos(steering_angle), 0)
+        twist_msg.angular.z = min(self.max_angular_speed, max(-self.max_angular_speed, angular_speed))
+        #if abs(steering_angle) > np.pi * 0.3: # stop driving forward if turn is too hard #todo: make this adaptiv
+        #    twist_msg.linear.x = 0.0
+        self.cmd_publisher.publish(twist_msg)
+        return False
+
             
 if __name__ == '__main__':
     rospy.init_node("path_follower")
