@@ -42,7 +42,7 @@ from geometry_msgs.msg import Pose, Point
 from visualization_msgs.msg import Marker, MarkerArray
 
 class Waypoint():
-    def __init__(self, pixel_pos : tuple[int, int], occupied_from: float, occupied_until : float = float('inf'), world_pos : tuple[float, float]|None = None, previous_waypoint:Waypoint|None = None):
+    def __init__(self, pixel_pos : tuple[int, int], occupied_from: float, occupied_until : float = float('inf'), world_pos : Pose|None = None, previous_waypoint:Waypoint|None = None):
         """
         Each grid cell the robot passes counts as a Waypoint. Multiple Waypoints make up the robots path.
 
@@ -53,7 +53,7 @@ class Waypoint():
         :params occupied_from: time when waypoint first becomes occupied, making it unavailable for othe
         :params occupied_until: time when waypoint becomes free, making it available for other robots [s]
         """
-        self.world_pos : tuple[float, float] | None = world_pos # the (x, y) position in world coordinates [m]; used to navigate the robot
+        self.world_pos : Pose | None = world_pos # the (x, y) position in world coordinates [m]; used to navigate the robot
         self.pixel_pos : tuple[int, int] = pixel_pos            # the (x, y) position in pixel coordinates [px]; used to find a path
         self.occupied_from: float = occupied_from               # time when waypoint first becomes occupied, making it unavailable for other robots [s]
         self.occupied_until: float = occupied_until              # time when waypoint becomes free, making it available for other robots [s]
@@ -71,10 +71,7 @@ class Waypoint():
         waypoint_msg.occupied_until = self.occupied_until
         
         if self.world_pos is not None:
-            world_pos : Pose = Pose()
-            world_pos.position.x = self.world_pos[0]
-            world_pos.position.y = self.world_pos[1]
-            waypoint_msg.world_position = world_pos
+            waypoint_msg.world_position = self.world_pos
 
         pixel_pos : PixelPos = PixelPos()
         pixel_pos.x, pixel_pos.y = self.pixel_pos
@@ -325,13 +322,35 @@ class PathFinder:
         response : TransformPixelToWorldResponse = transform_pixel_to_world(pixel_positions_x, pixel_positions_y)
         for index, waypoint in enumerate(waypoints):
             #rospy.logwarn(f"world_pos {response.x_world[index]} / {response.y_world[index]}")
-            waypoint.world_pos = (response.x_world[index], response.y_world[index])
+            if waypoint == goal_waypoint:
+                waypoint.world_pos = goal_pos.goal
+                continue
+            pose : Pose = Pose()
+            pose.position.x = response.x_world[index]
+            pose.position.y = response.y_world[index]
+            pose.position.z = 0.0
+            pose.orientation.x = 0.0
+            pose.orientation.y = 0.0
+            pose.orientation.z = 0.0
+            pose.orientation.w = 0.0
+            waypoint.world_pos = pose
 
         pixel_positions_x : list[int] = [waypoint.pixel_pos[0] for waypoint in bloated_waypoints]
         pixel_positions_y : list[int] = [waypoint.pixel_pos[1] for waypoint in bloated_waypoints]
         response : TransformPixelToWorldResponse = transform_pixel_to_world(pixel_positions_x, pixel_positions_y)
         for index, waypoint in enumerate(bloated_waypoints):
-            waypoint.world_pos = (response.x_world[index], response.y_world[index])
+            if waypoint == goal_waypoint:
+                waypoint.world_pos = goal_pos.goal
+                continue
+            pose : Pose = Pose()
+            pose.position.x = response.x_world[index]
+            pose.position.y = response.y_world[index]
+            pose.position.z = 0.0
+            pose.orientation.x = 0.0
+            pose.orientation.y = 0.0
+            pose.orientation.z = 0.0
+            pose.orientation.w = 0.0
+            waypoint.world_pos = pose
         
 
         trafo_end_time = time.time()
