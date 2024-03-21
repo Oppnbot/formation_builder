@@ -13,6 +13,7 @@ from visualization_msgs.msg import Marker, MarkerArray
 import sensor_msgs.point_cloud2 as pc2
 from sensor_msgs.msg import PointCloud2, LaserScan
 import laser_geometry.laser_geometry as laser_geometry
+from laser_scanner import LaserScanner
 
 
 from geometry_msgs.msg import Twist, PoseStamped, Point, Quaternion, Pose
@@ -51,6 +52,8 @@ class PathFollower:
         self.cmd_publisher = rospy.Publisher(f'/mir{self.robot_id}/cmd_vel', Twist, queue_size=10)
         self.reached_waypoints : int = 0
         self.target_waypoint : Waypoint | None = None
+
+        self.scanner : LaserScanner = LaserScanner(robot_id)
 
         #rospy.loginfo(f"[Follower {robot_id}] Waiting to connect to movement client...")
         #self.movement_client : actionlib.SimpleActionClient = actionlib.SimpleActionClient(f"/mir{self.robot_id}/move_base_flex/move_base", mbf_msgs.MoveBaseAction)
