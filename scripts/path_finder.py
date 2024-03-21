@@ -3,19 +3,14 @@
 
 
 # Bugfixes:
-# todo: start/stop positioning are not scaling
 # todo: don't communicate via magic numbers, use publisher and subscribers
 
-
 # Code Quality:
-# todo: replace waypoints by ros messages
-# todo: distribute code to multiple nodes
+# todo:
 
 # Additional Features:
-# todo: option for wider paths to fit robot width (+map scaling)
 # todo: assign new priorities when there is no viable path
 # todo: assign new priorities when a path took too long (?)
-# todo: implement path following
 # todo: distribute calculation to multiple robots for O{(n-1)!} instead of O{n!}
 
 # Other:

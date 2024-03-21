@@ -10,10 +10,15 @@ import actionlib
 import mbf_msgs.msg as mbf_msgs
 import numpy as np
 from visualization_msgs.msg import Marker, MarkerArray
+import sensor_msgs.point_cloud2 as pc2
+from sensor_msgs.msg import PointCloud2, LaserScan
+import laser_geometry.laser_geometry as laser_geometry
+
 
 from geometry_msgs.msg import Twist, PoseStamped, Point, Quaternion, Pose
 from formation_builder.msg import Trajectory, Waypoint
 from tf.transformations import euler_from_quaternion
+
 
 class PathFollower:
     def __init__(self, robot_id) -> None:
@@ -238,8 +243,6 @@ class PathFollower:
         twist_msg = Twist()
         twist_msg.linear.x = linear_speed * max(np.cos(steering_angle), 0)
         twist_msg.angular.z = min(self.max_angular_speed, max(-self.max_angular_speed, angular_speed))
-        #if abs(steering_angle) > np.pi * 0.3: # stop driving forward if turn is too hard #todo: make this adaptiv
-        #    twist_msg.linear.x = 0.0
         self.cmd_publisher.publish(twist_msg)
         return False
 
