@@ -22,7 +22,7 @@ from tf.transformations import euler_from_quaternion
 
 
 class PathFollower:
-    def __init__(self, robot_id) -> None:
+    def __init__(self, robot_id:int) -> None:
         #rospy.init_node(f'path_follower_{robot_id}')
         rospy.loginfo(f"[Follower {robot_id}] Initializing!")
         self.robot_id : int = robot_id
@@ -39,21 +39,38 @@ class PathFollower:
         self.goal_tolerance : float = 0.05 # [m] distance at which the goal position is considered to be reached
         self.rotation_tolerance : float = 0.002 # [rad] angle at which the goal rotation is considered to be reached
         self.slowdown_angle : float = 0.25 # [rad] angle at which the slowdown begins. might take longer to reach the desired orientation but will allow for higher precision
+        
+        self.slowdown_x : float = 3.0 # [m] defines a boxes x-axis that causes slowdowns to the robots speed if objects enter it
+        self.slowdown_y : float = 0.7 # [m] defines a boxes y-axis that causes slowdowns to the robots speed if objects enter it
+        self.stopping_x: float = 1.1 # [m]defines a box that x-axis causes a stop to the robots speed if objects enter it
+        self.stopping_y : float = 0.65 # [m] defines a box that y-axis causes a stop to the robots speed if objects enter it
+        self.robot_size_x : float = 0.9 # [m] robot size along x-axis. will igonore laser scans values within this range
+        self.robot_size_y : float = 0.6 # [m] robot size along y-axis. will igonore laser scans values within this range
         # ---- End Config ----
         
+        self.upper_linear_limit : float = self.max_linear_speed
+        self.lower_linear_limit : float = -self.max_linear_speed
+        self.upper_rotation_limit : float = self.max_angular_speed
+        self.lower_rotation_limit : float = -self.max_angular_speed
+
         self.robot_yaw : float = 0.0
         self.k_linear : float = 1.0 # higher value -> faster linear movement value > 1.0 might lead to start/stop behaviour
-        self.k_angular:float = 2.0 # higher value -> faster turnings
-
+        self.k_angular : float = 2.0 # higher value -> faster turnings
+        
+        self.scanner : LaserScanner = LaserScanner(self.robot_id)
+        rate : rospy.Rate = rospy.Rate(100)
+        while not self.scanner.initialized:
+            rate.sleep()
         rospy.Subscriber('formation_builder/trajectory', Trajectory, self.trajectory_update)
         rospy.Subscriber(f'/mir{self.robot_id}/mir_pose_simple', Pose, self.update_pose)
+        rospy.Subscriber(f'/mir{self.robot_id}/scan', LaserScan, self.safety_limit_update)
 
         self.goal_publisher = rospy.Publisher(f'/mir{self.robot_id}/move_base_simple/goal', PoseStamped, queue_size=10)
         self.cmd_publisher = rospy.Publisher(f'/mir{self.robot_id}/cmd_vel', Twist, queue_size=10)
         self.reached_waypoints : int = 0
         self.target_waypoint : Waypoint | None = None
 
-        self.scanner : LaserScanner = LaserScanner(robot_id)
+        
 
         #rospy.loginfo(f"[Follower {robot_id}] Waiting to connect to movement client...")
         #self.movement_client : actionlib.SimpleActionClient = actionlib.SimpleActionClient(f"/mir{self.robot_id}/move_base_flex/move_base", mbf_msgs.MoveBaseAction)
@@ -64,6 +81,72 @@ class PathFollower:
         rospy.spin()
         return None
     
+
+    def safety_limit_update(self, _ :LaserScan) -> None:
+        #if self.robot_id != 1:
+        #    return None
+        _upper_linear_limit : float = self.max_linear_speed
+        _lower_linear_limit : float = -self.max_linear_speed
+        _upper_rotation_limit : float = self.max_angular_speed
+        _lower_rotation_limit : float = -self.max_angular_speed
+
+        laser_points : list[list[float]] = self.scanner.get_laser_points()
+        is_ignoring : bool = False
+        is_colliding : bool = False
+        is_slowdown : bool = False
+        for point in laser_points:
+            # Ignore Points that are inside our robot. this may happen if the laser scanner recognizes robot parts as obstacle
+            if self.robot_size_x / 2 > abs(point[0]) and self.robot_size_y / 2 > abs(point[1]):
+                is_ignoring = True
+                continue
+            # Check for very close obstacles -> stop
+            if abs(point[0]) < self.stopping_x / 2 and abs(point[1]) < self.stopping_y / 2:
+                is_colliding = True
+                if point[0] > 0:
+                    _upper_linear_limit = 0.0
+                    if point[1] > 0:
+                        _upper_rotation_limit = 0.0
+                    else:
+                        _lower_rotation_limit = 0.0
+                else:
+                    _lower_linear_limit = 0.0
+                    if point[1] > 0:
+                        _lower_rotation_limit = 0.0
+                    else:
+                        _upper_rotation_limit = 0.0
+                continue
+            # Check for somewhat close obstacles -> slowdown
+            if abs(point[0]) < self.slowdown_x / 2 and abs(point[1]) < self.slowdown_y / 2:
+                is_slowdown = True
+                slope: float = self.max_linear_speed / ((self.slowdown_x - self.stopping_x) / 2)
+                offset : float = -slope * self.stopping_x / 2
+
+                x_vel : float = (slope * abs(point[0]) + offset)
+                x_vel = min(x_vel, self.max_linear_speed)
+                x_vel = max(x_vel, 0.05 * self.max_linear_speed) # define min velocity
+                
+                if point[0] > 0:
+                    _upper_linear_limit = min(_upper_linear_limit, x_vel)
+                else:
+                    _lower_linear_limit = max(_lower_linear_limit, -x_vel)
+
+        if is_ignoring:
+            rospy.logerr("invalid point is inside robot")
+        if is_colliding:
+            rospy.logwarn(f"[FOLLOWER {self.robot_id}]: Stopping because collision is imminent!")
+        elif is_slowdown:
+            rospy.logwarn(f"slowing down to {_upper_linear_limit:.3f} / {_lower_linear_limit:.3f}")
+        else:
+            rospy.loginfo("no obstacle present")
+
+        self.upper_linear_limit = _upper_linear_limit
+        self.lower_linear_limit = _lower_linear_limit
+        self.upper_rotation_limit = _upper_rotation_limit
+        self.lower_rotation_limit = _lower_rotation_limit
+            # Check if there are objects inside the slowdown area
+            #if abs(point[1]) < self.slowdown_width / 2 and abs(point[0]) < self.slowdown_height / 2:     
+        return None
+
 
     def stop_robot(self) -> None:
         twist_msg = Twist()
@@ -139,6 +222,8 @@ class PathFollower:
                 #rospy.loginfo(f"[Follower {self.robot_id}] is too fast. expected to arrive at target at {time.time() + (distance_to_target / self.max_linear_speed)} but waypoint is occupied from {self.target_waypoint.occupied_from + self.trajectory_start_time}")
                 break
             self.reached_waypoints += 1
+            if len(self.trajectory.path) <= self.reached_waypoints:
+                continue
             self.target_waypoint = self.trajectory.path[self.reached_waypoints]
             distance_to_target : float = self.get_distance(self.robot_pose, self.target_waypoint)
         return self.trajectory.path[self.reached_waypoints]
@@ -242,10 +327,21 @@ class PathFollower:
 
         distance_to_target = self.get_distance(self.robot_pose, self.target_waypoint)
         linear_speed, angular_speed = self.control_speeds(distance_to_target, steering_angle)
+        linear_speed : float = linear_speed * max(np.cos(steering_angle), 0)
+
+        # Apply Robot Harware Limits
+        linear_speed = min(self.max_linear_speed, max(-self.max_linear_speed, linear_speed))
+        angular_speed = min(self.max_angular_speed, max(-self.max_angular_speed, angular_speed))
+
+        # Apply Safety Limits
+        linear_speed = max(linear_speed, self.lower_linear_limit)
+        linear_speed = min(linear_speed, self.upper_linear_limit)
+        angular_speed = min(angular_speed, self.upper_rotation_limit)
+        angular_speed = max(angular_speed, self.lower_rotation_limit)
 
         twist_msg = Twist()
-        twist_msg.linear.x = linear_speed * max(np.cos(steering_angle), 0)
-        twist_msg.angular.z = min(self.max_angular_speed, max(-self.max_angular_speed, angular_speed))
+        twist_msg.linear.x = linear_speed
+        twist_msg.angular.z = angular_speed
         self.cmd_publisher.publish(twist_msg)
         return False
 
