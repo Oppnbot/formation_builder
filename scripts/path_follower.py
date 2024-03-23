@@ -43,7 +43,7 @@ class PathFollower:
         self.slowdown_x : float = 3.0 # [m] defines a boxes x-axis that causes slowdowns to the robots speed if objects enter it
         self.slowdown_y : float = 0.7 # [m] defines a boxes y-axis that causes slowdowns to the robots speed if objects enter it
         self.stopping_x: float = 1.1 # [m]defines a box that x-axis causes a stop to the robots speed if objects enter it
-        self.stopping_y : float = 0.65 # [m] defines a box that y-axis causes a stop to the robots speed if objects enter it
+        self.stopping_y : float = 0.8 # [m] defines a box that y-axis causes a stop to the robots speed if objects enter it
         self.robot_size_x : float = 0.9 # [m] robot size along x-axis. will igonore laser scans values within this range
         self.robot_size_y : float = 0.6 # [m] robot size along y-axis. will igonore laser scans values within this range
         # ---- End Config ----
@@ -83,8 +83,8 @@ class PathFollower:
     
 
     def safety_limit_update(self, _ :LaserScan) -> None:
-        #if self.robot_id != 1:
-        #    return None
+        if self.robot_id != 1:
+            return None
         _upper_linear_limit : float = self.max_linear_speed
         _lower_linear_limit : float = -self.max_linear_speed
         _upper_rotation_limit : float = self.max_angular_speed
@@ -94,29 +94,23 @@ class PathFollower:
         is_ignoring : bool = False
         is_colliding : bool = False
         is_slowdown : bool = False
+        crit_radius : float = np.hypot(self.robot_size_x / 2, self.robot_size_y / 2) * 1.05 # check rotational collision when object gets this close. multiplication factor for safety margin
         for point in laser_points:
+            #* INVALID DATA FILTERING
             # Ignore Points that are inside our robot. this may happen if the laser scanner recognizes robot parts as obstacle
             if self.robot_size_x / 2 > abs(point[0]) and self.robot_size_y / 2 > abs(point[1]):
                 is_ignoring = True
                 continue
+            #* LINEAR COLLISION AVOIDANCE
             # Check for very close obstacles -> stop
-            if abs(point[0]) < self.stopping_x / 2 and abs(point[1]) < self.stopping_y / 2:
+            if abs(point[0]) < self.stopping_x / 2 and abs(point[1]) < self.robot_size_y / 2:
                 is_colliding = True
                 if point[0] > 0:
                     _upper_linear_limit = 0.0
-                    if point[1] > 0:
-                        _upper_rotation_limit = 0.0
-                    else:
-                        _lower_rotation_limit = 0.0
                 else:
                     _lower_linear_limit = 0.0
-                    if point[1] > 0:
-                        _lower_rotation_limit = 0.0
-                    else:
-                        _upper_rotation_limit = 0.0
-                continue
             # Check for somewhat close obstacles -> slowdown
-            if abs(point[0]) < self.slowdown_x / 2 and abs(point[1]) < self.slowdown_y / 2:
+            elif abs(point[0]) < self.slowdown_x / 2 and abs(point[1]) < self.slowdown_y / 2:
                 is_slowdown = True
                 slope: float = self.max_linear_speed / ((self.slowdown_x - self.stopping_x) / 2)
                 offset : float = -slope * self.stopping_x / 2
@@ -130,14 +124,51 @@ class PathFollower:
                 else:
                     _lower_linear_limit = max(_lower_linear_limit, -x_vel)
 
-        if is_ignoring:
-            rospy.logerr("invalid point is inside robot")
-        if is_colliding:
-            rospy.logwarn(f"[FOLLOWER {self.robot_id}]: Stopping because collision is imminent!")
-        elif is_slowdown:
-            rospy.logwarn(f"slowing down to {_upper_linear_limit:.3f} / {_lower_linear_limit:.3f}")
-        else:
-            rospy.loginfo("no obstacle present")
+            #* ROTATIONAL DATA FILTERING
+            dist_from_robot: float = np.hypot(point[0], point[1])
+            if dist_from_robot < crit_radius * 3:#!werwer
+                #* CHECK FOR TOTAL STOP
+                # check if object is in critical distance and we need to block all rotations that may lead to a collision
+                is_clockwise_collision: bool = (np.sign(point[0]) == np.sign(point[1]))
+                if abs(point[1]) < self.stopping_y / 2 and point[0] < self.stopping_x / 2:
+                    # critical zone in the middle of the robot where both rotation directions may lead to a collsion
+                    if abs(point[0]) < 0.1 * self.robot_size_x:
+                        _upper_rotation_limit = 0
+                        _lower_rotation_limit = 0
+                    ## collisions near the robots corner only block one rotational direction
+                    if is_clockwise_collision:
+                        _upper_rotation_limit = 0
+                    else:
+                        _lower_rotation_limit = 0
+                #* CHECK FOR SLOWDOWN
+                dist_to_robot_flank : float = max(0, abs(point[1]) - self.robot_size_y / 2)
+                angle : float = np.arctan2(dist_to_robot_flank, point[0])
+                
+                #angle : float = np.arctan2(point[1] - self.robot_size_y * np.sign(point[1]), point[0])
+                speed_factor : float = 1.0 - 2 * abs(0.5 - angle/np.pi)
+                if is_clockwise_collision:
+                    _upper_rotation_limit = min(_upper_rotation_limit, speed_factor * self.max_angular_speed)
+                else:
+                    _lower_rotation_limit = max(_lower_rotation_limit, -speed_factor * self.max_angular_speed)
+          
+                    
+        #rospy.loginfo(f"lower {_lower_rotation_limit:3f}, upper {_upper_rotation_limit:.3f}")
+        #if _upper_rotation_limit == 0 or _lower_rotation_limit == 0:
+        #    rospy.logwarn(f"blocks directions c: {_lower_rotation_limit == 0} / cc: {_upper_rotation_limit == 0}")
+        #else:
+        #    rospy.loginfo("no rotational collision")    
+    
+        #rospy.loginfo(f"rotational limits: ")
+
+
+        #if is_ignoring:
+        #    rospy.logerr("invalid point is inside robot")
+        #if is_colliding:
+        #    rospy.logwarn(f"[FOLLOWER {self.robot_id}]: Stopping because collision is imminent!")
+        #elif is_slowdown:
+        #    rospy.logwarn(f"slowing down to {_upper_linear_limit:.3f} / {_lower_linear_limit:.3f}")
+        #else:
+        #    rospy.loginfo("no obstacle present")
 
         self.upper_linear_limit = _upper_linear_limit
         self.lower_linear_limit = _lower_linear_limit
@@ -293,6 +324,9 @@ class PathFollower:
         angular_speed = min(self.max_angular_speed, max(min_angular_speed, angular_speed))
         angular_speed *= rotation_direction
 
+        angular_speed = max(angular_speed, self.lower_rotation_limit)
+        angular_speed = min(angular_speed, self.upper_rotation_limit)
+
         twist_msg.angular.z = angular_speed
         self.cmd_publisher.publish(twist_msg)
         return False
@@ -300,6 +334,8 @@ class PathFollower:
 
 
     def follow_trajectory(self) -> bool:
+        if self.robot_id != 1:
+            return True
         if self.robot_pose is None or self.target_waypoint is None:
             #rospy.logwarn(f"[Follower {self.robot_id}] Waiting for initialization")
             return False
@@ -338,6 +374,8 @@ class PathFollower:
         linear_speed = min(linear_speed, self.upper_linear_limit)
         angular_speed = min(angular_speed, self.upper_rotation_limit)
         angular_speed = max(angular_speed, self.lower_rotation_limit)
+
+        rospy.logwarn(f"angular speed {angular_speed}")
 
         twist_msg = Twist()
         twist_msg.linear.x = linear_speed
