@@ -43,7 +43,7 @@ class PathFollower:
         self.slowdown_x : float = 3.0 # [m] defines a boxes x-axis that causes slowdowns to the robots speed if objects enter it
         self.slowdown_y : float = 0.7 # [m] defines a boxes y-axis that causes slowdowns to the robots speed if objects enter it
         self.stopping_x: float = 1.1 # [m]defines a box that x-axis causes a stop to the robots speed if objects enter it
-        self.stopping_y : float = 0.8 # [m] defines a box that y-axis causes a stop to the robots speed if objects enter it
+        self.stopping_y : float = 0.7 # [m] defines a box that y-axis causes a stop to the robots speed if objects enter it
         self.robot_size_x : float = 0.9 # [m] robot size along x-axis. will igonore laser scans values within this range
         self.robot_size_y : float = 0.6 # [m] robot size along y-axis. will igonore laser scans values within this range
         # ---- End Config ----
@@ -83,8 +83,7 @@ class PathFollower:
     
 
     def safety_limit_update(self, _ :LaserScan) -> None:
-        if self.robot_id != 1:
-            return None
+
         _upper_linear_limit : float = self.max_linear_speed
         _lower_linear_limit : float = -self.max_linear_speed
         _upper_rotation_limit : float = self.max_angular_speed
@@ -126,7 +125,7 @@ class PathFollower:
 
             #* ROTATIONAL DATA FILTERING
             dist_from_robot: float = np.hypot(point[0], point[1])
-            if dist_from_robot < crit_radius * 3:#!werwer
+            if dist_from_robot < crit_radius:
                 #* CHECK FOR TOTAL STOP
                 # check if object is in critical distance and we need to block all rotations that may lead to a collision
                 is_clockwise_collision: bool = (np.sign(point[0]) == np.sign(point[1]))
@@ -334,8 +333,6 @@ class PathFollower:
 
 
     def follow_trajectory(self) -> bool:
-        if self.robot_id != 1:
-            return True
         if self.robot_pose is None or self.target_waypoint is None:
             #rospy.logwarn(f"[Follower {self.robot_id}] Waiting for initialization")
             return False
@@ -374,8 +371,6 @@ class PathFollower:
         linear_speed = min(linear_speed, self.upper_linear_limit)
         angular_speed = min(angular_speed, self.upper_rotation_limit)
         angular_speed = max(angular_speed, self.lower_rotation_limit)
-
-        rospy.logwarn(f"angular speed {angular_speed}")
 
         twist_msg = Twist()
         twist_msg.linear.x = linear_speed
