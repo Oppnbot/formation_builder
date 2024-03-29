@@ -17,7 +17,7 @@ from laser_scanner import LaserScanner
 
 
 from geometry_msgs.msg import Twist, PoseStamped, Point, Quaternion, Pose
-from formation_builder.msg import Trajectory, Waypoint
+from formation_builder.msg import Trajectory, Trajectories, Waypoint, FollowerFeedback
 from tf.transformations import euler_from_quaternion
 
 
@@ -47,6 +47,8 @@ class PathFollower:
         self.robot_size_x : float = 0.9 # [m] robot size along x-axis. will igonore laser scans values within this range
         self.robot_size_y : float = 0.6 # [m] robot size along y-axis. will igonore laser scans values within this range
         # ---- End Config ----
+
+        self.stop_moving : bool = False
         
         self.upper_linear_limit : float = self.max_linear_speed
         self.lower_linear_limit : float = -self.max_linear_speed
@@ -61,12 +63,15 @@ class PathFollower:
         rate : rospy.Rate = rospy.Rate(100)
         while not self.scanner.initialized:
             rate.sleep()
-        rospy.Subscriber('formation_builder/trajectory', Trajectory, self.trajectory_update)
+        rospy.Subscriber('formation_builder/trajectories', Trajectories, self.trajectory_update)
         rospy.Subscriber(f'/mir{self.robot_id}/mir_pose_simple', Pose, self.update_pose)
         rospy.Subscriber(f'/mir{self.robot_id}/scan', LaserScan, self.safety_limit_update)
+        rospy.Subscriber('/formation_builder/follower_status', FollowerFeedback, self.receive_feedback)
 
         self.goal_publisher = rospy.Publisher(f'/mir{self.robot_id}/move_base_simple/goal', PoseStamped, queue_size=10)
         self.cmd_publisher = rospy.Publisher(f'/mir{self.robot_id}/cmd_vel', Twist, queue_size=10)
+        self.status_publisher = rospy.Publisher('/formation_builder/follower_status', FollowerFeedback, queue_size=10, latch=True)
+
         self.reached_waypoints : int = 0
         self.target_waypoint : Waypoint | None = None
 
@@ -82,8 +87,16 @@ class PathFollower:
         return None
     
 
-    def safety_limit_update(self, _ :LaserScan) -> None:
+    def receive_feedback(self, feedback : FollowerFeedback) -> None:
+        if feedback.robot_id == self.robot_id:
+            return None
+        if feedback.status == feedback.LOST_WAYPOINT:
+            self.stop_moving = True
+            self.stop_robot()
+        return None
 
+
+    def safety_limit_update(self, _ :LaserScan) -> None:
         _upper_linear_limit : float = self.max_linear_speed
         _lower_linear_limit : float = -self.max_linear_speed
         _upper_rotation_limit : float = self.max_angular_speed
@@ -259,11 +272,27 @@ class PathFollower:
         return self.trajectory.path[self.reached_waypoints]
 
 
-    def trajectory_update(self, trajectory : Trajectory) -> None:
-        if trajectory.planner_id != self.robot_id:
+    def trajectory_update(self, trajectories: Trajectories) -> None:
+        if trajectories.trajectories is None:
+            return None
+        self.trajectory : Trajectory | None = None
+        for trajectory in trajectories.trajectories:
+            tray : Trajectory = trajectory
+            if tray.planner_id == self.robot_id:
+                self.trajectory = tray
+                break
+
+        if self.trajectory is None:
+            rospy.loginfo(f"[Follower {self.robot_id}] No new Trajectory.")
             return None
         rospy.loginfo(f"[Follower {self.robot_id}] Received a new Trajectory.")
-        self.trajectory = trajectory
+        self.stop_moving = False
+        
+        feedback : FollowerFeedback = FollowerFeedback()
+        feedback.robot_id = self.robot_id
+        feedback.status = feedback.FOLLOWING
+        self.status_publisher.publish(feedback)
+
         self.reached_waypoints = 0
         self.target_waypoint = trajectory.start_waypoint
         self.trajectory_start_time = time.time()
@@ -273,11 +302,15 @@ class PathFollower:
         while not rospy.is_shutdown():
             if self.follow_trajectory():
                 break
+            if self.stop_moving:
+                return None
             rate.sleep()
 
         while not rospy.is_shutdown():
             if self.rotate(self.trajectory.goal_waypoint.world_position.orientation.z):
                 break
+            if self.stop_moving:
+                return None
             rate.sleep()
         
         rospy.loginfo(f"[Follower {self.robot_id}] Done!")
@@ -288,7 +321,6 @@ class PathFollower:
     def control_speeds(self, distance_to_target, steering_angle) -> tuple[float, float]:
         linear_speed = min(self.max_linear_speed, self.k_linear * distance_to_target)
         angular_speed = self.k_angular * steering_angle
-
         return linear_speed, angular_speed
     
 
@@ -312,6 +344,10 @@ class PathFollower:
             twist_msg.angular.z = 0.0
             self.cmd_publisher.publish(twist_msg)
             rospy.loginfo(f"[Follower {self.robot_id}] Reached the Goal Orientation with a tolerance of {abs(angle_error):.5f} rad")
+            feedback : FollowerFeedback = FollowerFeedback()
+            feedback.robot_id = self.robot_id
+            feedback.status = feedback.DONE
+            self.status_publisher.publish(feedback)
             return True
         
         angular_speed : float = self.max_angular_speed
@@ -342,6 +378,16 @@ class PathFollower:
             return False
         
         distance_to_target : float = self.get_distance(self.robot_pose, target_waypoint)
+        
+        if distance_to_target > 2 * self.lookahead_distance:
+            rospy.logerr(f"[Follower {self.robot_id}] got too far away from current waypoint. Stopping and requesting a new plan!")
+            self.stop_robot()
+            feedback : FollowerFeedback = FollowerFeedback()
+            feedback.robot_id = self.robot_id
+            feedback.status = feedback.LOST_WAYPOINT
+            self.stop_moving = True
+            self.status_publisher.publish(feedback)
+            return False
         
         if distance_to_target < self.goal_tolerance:
             rospy.loginfo(f"[Follower {self.robot_id}] Reached the Goal Position with a tolerance of {distance_to_target:.3f} m")

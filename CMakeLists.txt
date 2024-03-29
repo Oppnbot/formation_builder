@@ -60,8 +60,10 @@ add_message_files(
   PixelPos.msg
   Waypoint.msg
   Trajectory.msg
+  Trajectories.msg
   GoalPose.msg
   Formation.msg
+  FollowerFeedback.msg
 )
 
 # Generate services in the 'srv' folder

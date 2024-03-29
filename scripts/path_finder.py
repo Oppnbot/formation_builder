@@ -29,7 +29,7 @@ import heapq
 #from commons import TrajectoryData, Waypoint
 from formation_builder.msg import Trajectory, PixelPos, Formation, GoalPose
 from formation_builder.msg import Waypoint as WaypointMsg
-from visualization import fb_visualizer
+#from visualization import fb_visualizer
 #from formation_builder.srv import transformation
 from formation_builder.srv import TransformPixelToWorld, TransformPixelToWorldResponse, TransformWorldToPixel, TransformWorldToPixelResponse
 from geometry_msgs.msg import Pose, Point
@@ -45,7 +45,7 @@ class Waypoint():
         
         :params world_pos: the (x, y) position in world coordinates [m]; used to navigate the robot
         :params pixel_pos: the (x, y) position in pixel coordinates [px]; used to find a path
-        :params occupied_from: time when waypoint first becomes occupied, making it unavailable for othe
+        :params occupied_from: time when waypoint first becomes occupied, making it unavailable for others
         :params occupied_until: time when waypoint becomes free, making it available for other robots [s]
         """
         self.world_pos : Pose | None = world_pos # the (x, y) position in world coordinates [m]; used to navigate the robot
@@ -221,8 +221,8 @@ class PathFinder:
                 rospy.loginfo(f"[Planner {self.id}] Reached the goal after {iterations} iterations")
                 goal_waypoint = current_waypoint
                 break
-            if self.dynamic_visualization:
-                fb_visualizer.draw_timings(timings, bloated_static_obstacles, start_waypoint.pixel_pos, goal_waypoint.pixel_pos, dynamic_obstacles=dynamic_obstacles, sleep=None)
+            #if self.dynamic_visualization:
+            #    fb_visualizer.draw_timings(timings, bloated_static_obstacles, start_waypoint.pixel_pos, goal_waypoint.pixel_pos, dynamic_obstacles=dynamic_obstacles, sleep=None)
 
             # CHECK CURRENT POSITION FOR COLLISION
             # if another robot is blocking the path, the robot waits for the path to become free. this may lead to collision with other robots that try to drive through this waiting position
@@ -292,8 +292,8 @@ class PathFinder:
                 current_waypoint.previous_waypoint.occupied_until = (current_waypoint.occupied_from + 1)* 1.2 + 3.0 # todo: define different metrics here #*1.3+1.0
             waypoints.append(current_waypoint)
             current_waypoint = current_waypoint.previous_waypoint
-            if self.dynamic_visualization:
-                fb_visualizer.draw_timings(timings, bloated_static_obstacles, start_waypoint.pixel_pos, goal_waypoint.pixel_pos, dynamic_obstacles=dynamic_obstacles, sleep=None)
+            #if self.dynamic_visualization:
+            #    fb_visualizer.draw_timings(timings, bloated_static_obstacles, start_waypoint.pixel_pos, goal_waypoint.pixel_pos, dynamic_obstacles=dynamic_obstacles, sleep=None)
         waypoints.reverse()
 
         bloated_waypoints : list[Waypoint] = self.bloat_path(waypoints)

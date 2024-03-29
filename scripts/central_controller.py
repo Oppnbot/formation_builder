@@ -10,9 +10,8 @@ from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 from path_finder import PathFinder
 from path_follower import PathFollower
-from formation_builder.msg import Formation, GoalPose, Trajectory
+from formation_builder.msg import Formation, GoalPose, Trajectory, Trajectories, FollowerFeedback
 from geometry_msgs.msg import Pose
-from visualization import fb_visualizer
 
 
 class CentralController:
@@ -39,14 +38,24 @@ class CentralController:
         self.path_finders : dict[int, PathFinder] = {id: PathFinder(id) for id in self.unique_mir_ids}
         #self.path_followers:dict[int, PathFollower] = {id: PathFollower(id) for id in self.unique_mir_ids}
 
+        self.follower_feedback_subscriber : rospy.Subscriber = rospy.Subscriber('formation_builder/follower_status', FollowerFeedback, self.follower_feedback)
+
         self.formation_subscriber : rospy.Subscriber = rospy.Subscriber("/formation_builder/formation", Formation, self.build_formation)
         self.map_subscriber : rospy.Subscriber = rospy.Subscriber("formation_builder/map", Image, self.map_callback)
-        self.trajectory_publisher : rospy.Publisher = rospy.Publisher('formation_builder/trajectory', Trajectory, queue_size=10, latch=True)
+        self.trajectory_publisher : rospy.Publisher = rospy.Publisher('formation_builder/trajectories', Trajectories, queue_size=10, latch=True)
 
+        self.current_formation : Formation | None = None
         self.grid : np.ndarray | None = None
         self.cv_bridge : CvBridge = CvBridge()
         return None
     
+
+    def follower_feedback(self, feedback : FollowerFeedback) -> None:
+        if feedback.status == feedback.LOST_WAYPOINT and self.current_formation is not None:
+            rospy.loginfo(f"[CController] Replanning because Robot {feedback.robot_id} lost it's waypoint.")
+            self.build_formation(self.current_formation)
+        return None
+
 
     def build_formation(self, formation : Formation) -> None:
         if self.grid is None:
@@ -55,6 +64,7 @@ class CentralController:
         if formation.goal_poses is None:
             rospy.logwarn("[CController] Received an empty formation request.")
             return None
+        self.current_formation = formation
         start_time : float = time.time()
         rospy.loginfo(f"[CController] Received a planning request for {len(formation.goal_poses)} robots.")
         
@@ -74,10 +84,12 @@ class CentralController:
         
 
         rospy.loginfo(f"[CController] ------------ Planning done! ({time.time()-start_time:.3f}s) ------------ ")
-        for trajectory in planned_trajectories:
-            self.trajectory_publisher.publish(trajectory)
+        trajectories : Trajectories = Trajectories()
+        trajectories.trajectories = [trajectory for trajectory in planned_trajectories]
+        trajectories.timestamp = time.time()
+        self.trajectory_publisher.publish(trajectories)
 
-        fb_visualizer.show_live_path(planned_trajectories)
+        #fb_visualizer.show_live_path(planned_trajectories)
         end_time = time.time()
         rospy.loginfo(f"[CController] ################## Done! ({end_time-start_time:.3f}s) ################## ")
 

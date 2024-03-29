@@ -1,0 +1,7 @@
+uint8 robot_id
+uint8 status
+
+uint8 IDLE=0
+uint8 FOLLOWING=1
+uint8 DONE=2
+uint8 LOST_WAYPOINT=3 
