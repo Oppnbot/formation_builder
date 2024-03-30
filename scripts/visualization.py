@@ -222,9 +222,6 @@ class Visualization():
             robot_marker.color.a = 0.7
             robot_marker.points = []
             path_marker.points = []
-            
-            
-            
 
             for wp in trajectory.occupied_positions:
                 waypoint : Waypoint = wp
@@ -248,114 +245,6 @@ class Visualization():
         return None
 
     
-
-    def show_live_path2(self) -> None:
-
-        if self.trajectories is None or self.trajectories.trajectories is None:
-            return None
-        #trajectories : list[Trajectories] = traj.trajectories
-        refresh_rate : int = 50 #hz
-        rate: rospy.Rate = rospy.Rate(refresh_rate)
-
-        elapsed_time : float = 0
-        start_time : float = time.time()
-        time_factor : float = 1.0 # used to speed up sim
-
-        # calculate the simulation time by finding the last valid timestamp before reaching goal for all trajectories
-        last_goal_timestamp : float = 0.0
-        for trajectory in self.trajectories.trajectories:
-            if trajectory.goal_waypoint is None:
-                continue
-            if trajectory.occupied_positions is None:
-                continue
-
-            for waypoint in trajectory.occupied_positions:
-                if waypoint is None:
-                    continue
-                if float('inf') > waypoint.occupied_until > last_goal_timestamp:
-                    last_goal_timestamp = waypoint.occupied_until
-
-        if last_goal_timestamp == float('inf') or last_goal_timestamp <= 0:
-            rospy.logwarn(f"[Visualization] Trying to simulate for {last_goal_timestamp} ammount of time; will stop after 120s instead.")
-            last_goal_timestamp = 120
-
-        rospy.loginfo(f"[Visualization] live visualization starting, simulating {last_goal_timestamp}s at a speed of {time_factor}...")
-
-        while elapsed_time < last_goal_timestamp + 1:
-            marker_array : MarkerArray = MarkerArray()
-            marker_array.markers = []
-            marker_pub = rospy.Publisher('/formation_builder/visualization_markers', MarkerArray, queue_size=10, latch=True)
-            
-
-            for trajectory in self.trajectories.trajectories:
-                def create_marker() -> Marker:
-                    marker: Marker = Marker()
-                    marker.header.frame_id = "map"
-                    marker.header.stamp = rospy.Time.now()
-                    marker.ns = "formation_builder"
-                    marker.id = trajectory.planner_id
-                    marker.type = Marker.CUBE_LIST
-                    marker.action = Marker.ADD
-                    #marker.lifetime = rospy.Duration(0, int(1_000_000_000 / time_factor))
-                    marker.lifetime = rospy.Duration(10, 0)
-
-                    marker.pose.orientation.w = 1.0
-                    marker.pose.orientation.x = 0.0
-                    marker.pose.orientation.y = 0.0
-                    marker.pose.orientation.z = 0.0
-
-                    if  self.grid_map is not None and self.grid_map.resolution_grid is not None:
-                        marker.scale.x = self.grid_map.resolution_grid
-                        marker.scale.y = self.grid_map.resolution_grid
-                    else:
-                        rospy.logwarn("[Visualization] Grid Resolution is unknown. Assuming 1m / grid cell")
-                        marker.scale.x = 1.0
-                        marker.scale.y = 1.0
-                    marker.scale.z = 0.1
-                    marker.points = []
-                    path_color = self.generate_distinct_colors(len(self.trajectories.trajectories), trajectory.planner_id, value=0.7)
-                    marker.color.r = float(path_color[0] / 255)
-                    marker.color.g = float(path_color[1] / 255)
-                    marker.color.b = float(path_color[2] / 255)
-                    marker.color.a = 0.7 # alpha value for transparancy
-                    return marker
-                if trajectory.occupied_positions is None:
-                    continue
-                
-                robot_marker: Marker = create_marker()
-                path_marker: Marker = create_marker()
-                path_marker.id += 100_000
-                path_marker.color.a = 0.3
-                robot_marker.color.a = 0.7
-                robot_marker.points = []
-                path_marker.points = []
-
-                for wp in trajectory.occupied_positions:
-                    waypoint : Waypoint = wp
-                    if waypoint.world_position is None:
-                        continue
-                    point : Point = Point()
-                    point.x = waypoint.world_position.position.x
-                    point.y = waypoint.world_position.position.y
-                    point.z = 0.05
-                    if waypoint.occupied_from < elapsed_time < waypoint.occupied_until:
-                        robot_marker.points.append(point)
-                    else:
-                        path_marker.points.append(point)
-
-                if robot_marker.points:
-                    marker_array.markers.append(robot_marker)
-                if path_marker.points:
-                    marker_array.markers.append(path_marker)
-            marker_pub.publish(marker_array)
-
-            rate.sleep()
-            elapsed_time = (time.time() - start_time) * time_factor
-            #rospy.loginfo(f"simulated {elapsed_time}s")
-        rospy.loginfo("[Visualization] live visualization done!")
-        return None
-
-
 if __name__ == '__main__':
     fb_visualizer : Visualization = Visualization()
     rospy.spin()

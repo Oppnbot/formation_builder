@@ -15,7 +15,7 @@ from sensor_msgs.msg import PointCloud2, LaserScan
 import laser_geometry.laser_geometry as laser_geometry
 from laser_scanner import LaserScanner
 
-
+from formation_builder.srv import TransformPixelToWorld, TransformPixelToWorldResponse, TransformWorldToPixel, TransformWorldToPixelResponse
 from geometry_msgs.msg import Twist, PoseStamped, Point, Quaternion, Pose
 from formation_builder.msg import Trajectory, Trajectories, Waypoint, FollowerFeedback
 from tf.transformations import euler_from_quaternion
@@ -27,8 +27,7 @@ class PathFollower:
         rospy.loginfo(f"[Follower {robot_id}] Initializing!")
         self.robot_id : int = robot_id
         self.trajectory : Trajectory | None = None
-        #self.trajectory_start_time :rospy.Time = rospy.Time.now()
-        self.trajectory_start_time : float = time.time()
+        self.trajectory_start_time : float = 0
         self.robot_pose : Pose | None = None
 
         # ---- Config Zone ----
@@ -60,6 +59,7 @@ class PathFollower:
         self.k_angular : float = 2.0 # higher value -> faster turnings
         
         self.scanner : LaserScanner = LaserScanner(self.robot_id)
+        self.status_publisher = rospy.Publisher('/formation_builder/follower_status', FollowerFeedback, queue_size=10, latch=True)
         rate : rospy.Rate = rospy.Rate(100)
         while not self.scanner.initialized:
             rate.sleep()
@@ -70,12 +70,12 @@ class PathFollower:
 
         self.goal_publisher = rospy.Publisher(f'/mir{self.robot_id}/move_base_simple/goal', PoseStamped, queue_size=10)
         self.cmd_publisher = rospy.Publisher(f'/mir{self.robot_id}/cmd_vel', Twist, queue_size=10)
-        self.status_publisher = rospy.Publisher('/formation_builder/follower_status', FollowerFeedback, queue_size=10, latch=True)
+        
 
         self.reached_waypoints : int = 0
         self.target_waypoint : Waypoint | None = None
 
-        
+        rospy.Timer(rospy.Duration(1, 0), self.position_watchdog, oneshot=False)
 
         #rospy.loginfo(f"[Follower {robot_id}] Waiting to connect to movement client...")
         #self.movement_client : actionlib.SimpleActionClient = actionlib.SimpleActionClient(f"/mir{self.robot_id}/move_base_flex/move_base", mbf_msgs.MoveBaseAction)
@@ -90,9 +90,48 @@ class PathFollower:
     def receive_feedback(self, feedback : FollowerFeedback) -> None:
         if feedback.robot_id == self.robot_id:
             return None
-        if feedback.status == feedback.LOST_WAYPOINT:
+        if feedback.status in [feedback.LOST_WAYPOINT, feedback.OUTSIDE_RESERVED_AREA]:
             self.stop_moving = True
             self.stop_robot()
+        return None
+    
+
+    def position_watchdog(self, _) -> None:
+        if self.robot_pose is None:
+            return None
+        if self.trajectory is None:
+            return None
+        if self.trajectory.occupied_positions is None:
+            return None
+        if self.stop_moving:
+            return None
+        
+        transform_world_to_pixel = rospy.ServiceProxy('/formation_builder/world_to_pixel', TransformWorldToPixel)
+        w2p_response : TransformWorldToPixelResponse = transform_world_to_pixel([self.robot_pose.position.x], [self.robot_pose.position.y])
+        if len(w2p_response.x_pixel) == 0 or len(w2p_response.y_pixel) == 0:
+            rospy.logwarn(f"[Follower {self.robot_id}] position watchdog failed to convert position to pixel space.")
+            return None
+        x_pixel : int = int(w2p_response.x_pixel[0])
+        y_pixel : int = int(w2p_response.y_pixel[0])
+
+        # Check if both positon and time are valid (robot must be inside the currently reserved area)
+        is_in_reserved_area : bool = False
+        for wp in self.trajectory.occupied_positions:
+            waypoint : Waypoint = wp
+            is_position_valid : bool = ((waypoint.pixel_position.x == x_pixel) and (waypoint.pixel_position.y == y_pixel))
+            if is_position_valid:
+                #rospy.loginfo(f"[Follower {self.robot_id}] occupied from {waypoint.occupied_from} < {time.time() - self.trajectory_start_time} < {waypoint.occupied_until}")
+                is_in_reserved_area = waypoint.occupied_from <= time.time() - self.trajectory_start_time <= waypoint.occupied_until
+                break
+
+        if not is_in_reserved_area:
+            rospy.logerr(f"[Follower {self.robot_id}] is outside the reserved area! Stopping and requesting a new plan!")
+            self.stop_robot()
+            feedback : FollowerFeedback = FollowerFeedback()
+            feedback.robot_id = self.robot_id
+            feedback.status = feedback.OUTSIDE_RESERVED_AREA
+            self.stop_moving = True
+            self.status_publisher.publish(feedback) 
         return None
 
 
@@ -269,17 +308,21 @@ class PathFollower:
                 continue
             self.target_waypoint = self.trajectory.path[self.reached_waypoints]
             distance_to_target : float = self.get_distance(self.robot_pose, self.target_waypoint)
-        return self.trajectory.path[self.reached_waypoints]
+        if self.reached_waypoints < len(self.trajectory.path):
+            return self.trajectory.path[self.reached_waypoints]
+        return None
 
 
     def trajectory_update(self, trajectories: Trajectories) -> None:
         if trajectories.trajectories is None:
             return None
+        self.trajectory_start_time = 0.0
         self.trajectory : Trajectory | None = None
         for trajectory in trajectories.trajectories:
             tray : Trajectory = trajectory
             if tray.planner_id == self.robot_id:
                 self.trajectory = tray
+                self.trajectory_start_time = trajectories.timestamp
                 break
 
         if self.trajectory is None:
@@ -295,7 +338,6 @@ class PathFollower:
 
         self.reached_waypoints = 0
         self.target_waypoint = trajectory.start_waypoint
-        self.trajectory_start_time = time.time()
         rate : rospy.Rate = rospy.Rate(100)
 
 
@@ -406,7 +448,7 @@ class PathFollower:
 
         distance_to_target = self.get_distance(self.robot_pose, self.target_waypoint)
         linear_speed, angular_speed = self.control_speeds(distance_to_target, steering_angle)
-        linear_speed : float = linear_speed * max(np.cos(steering_angle), 0)
+        linear_speed : float = linear_speed * max(np.cos(2*steering_angle), 0)
 
         # Apply Robot Harware Limits
         linear_speed = min(self.max_linear_speed, max(-self.max_linear_speed, linear_speed))

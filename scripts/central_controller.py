@@ -51,8 +51,13 @@ class CentralController:
     
 
     def follower_feedback(self, feedback : FollowerFeedback) -> None:
-        if feedback.status == feedback.LOST_WAYPOINT and self.current_formation is not None:
-            rospy.loginfo(f"[CController] Replanning because Robot {feedback.robot_id} lost it's waypoint.")
+        if self.current_formation is None:
+            return None
+        if feedback.status == feedback.LOST_WAYPOINT:
+            rospy.loginfo(f"[CController] Replanning because Robot {feedback.robot_id} lost its waypoint.")
+            self.build_formation(self.current_formation)
+        if feedback.status == feedback.OUTSIDE_RESERVED_AREA:
+            rospy.loginfo(f"[CController] Replanning because Robot {feedback.robot_id} left its reserved area.")
             self.build_formation(self.current_formation)
         return None
 

@@ -52,7 +52,7 @@ class Waypoint():
         self.pixel_pos : tuple[int, int] = pixel_pos            # the (x, y) position in pixel coordinates [px]; used to find a path
         self.occupied_from: float = occupied_from               # time when waypoint first becomes occupied, making it unavailable for other robots [s]
         self.occupied_until: float = occupied_until              # time when waypoint becomes free, making it available for other robots [s]
-        self.previous_waypoint : Waypoint|None = previous_waypoint
+        self.previous_waypoint : Waypoint | None = previous_waypoint
 
     def __eq__(self, __value: Waypoint) -> bool:
         return self.pixel_pos == __value.pixel_pos
@@ -126,9 +126,9 @@ class PathFinder:
                 if waypoint.occupied_until > max_occupied_until:
                     max_occupied_until = waypoint.occupied_until
             if min_occupied_from == float('inf'):
-                rospy.logwarn("min occupation time is infinite")
+                rospy.logwarn(f"[Planner {self.id}] min occupation time is infinite")
             if max_occupied_until == 0:
-                rospy.logwarn("max occupation time is 0")
+                rospy.logwarn(f"[Planner {self.id}] max occupation time is 0")
             new_waypoint : Waypoint = Waypoint(position, min_occupied_from, max_occupied_until)
             bloated_path.append(new_waypoint)
         return bloated_path
