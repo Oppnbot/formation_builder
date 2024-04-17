@@ -23,8 +23,11 @@ class LaserScanner:
         self.initialized : bool = False
         self.id : int = robot_id
         self.tf_listener = tf.TransformListener()
-        self.tf_listener.waitForTransform("map", f"mir{robot_id}/front_laser_link", rospy.Time(0), rospy.Duration(3))
-        self.tf_listener.waitForTransform("map", f"mir{robot_id}/back_laser_link", rospy.Time(0), rospy.Duration(3))
+        try:
+            self.tf_listener.waitForTransform("map", f"mir{robot_id}/front_laser_link", rospy.Time(0), rospy.Duration(3))
+            self.tf_listener.waitForTransform("map", f"mir{robot_id}/back_laser_link", rospy.Time(0), rospy.Duration(3))
+        finally:
+            pass
         self.scan_left_subscriber : rospy.Subscriber = rospy.Subscriber(f"/mir{robot_id}/f_scan", LaserScan, self.scanner_callback, 'front')
         self.scan_right_subscriber : rospy.Subscriber = rospy.Subscriber(f"/mir{robot_id}/b_scan", LaserScan, self.scanner_callback, 'back')
         self.transform = TransformStamped()
@@ -64,22 +67,10 @@ class LaserScanner:
         data : np.ndarray = ros_numpy.point_cloud2.pointcloud2_to_xyz_array(cloud_transformed, remove_nans=True)
 
         if side == "front":
-            #rospy.logwarn("owowowow")
             self.front_laser_points = data.tolist()
         else:
-            #rospy.logwarn("UWUWUWUW")
             self.back_laser_points = data.tolist()
         return None
-
-
-        is_colliding: bool = False
-        for point in data:
-            if abs(point[1]) < 0.1 and 0 < point[0] < 1:
-                is_colliding = True
-        if is_colliding:
-            rospy.logerr("COLLISION INCOMING!!!")
-        else:
-            rospy.loginfo("everything is fine :)")
 
 
 
