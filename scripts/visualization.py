@@ -206,7 +206,7 @@ class Visualization():
                     marker.scale.y = 1.0
                 marker.scale.z = 0.1
                 marker.points = []
-                path_color = self.generate_distinct_colors(len(self.trajectories.trajectories), trajectory.planner_id, value=0.7)
+                path_color = self.generate_distinct_colors(len(self.trajectories.trajectories), trajectory.planner_id, value=0.7) # type: ignore
                 marker.color.r = float(path_color[0] / 255)
                 marker.color.g = float(path_color[1] / 255)
                 marker.color.b = float(path_color[2] / 255)

@@ -27,14 +27,13 @@ import cv2
 import time
 import heapq
 #from commons import TrajectoryData, Waypoint
-from formation_builder.msg import Trajectory, PixelPos, Formation, GoalPose
+from formation_builder.msg import Trajectory, PixelPos, GoalPose
 from formation_builder.msg import Waypoint as WaypointMsg
 #from visualization import fb_visualizer
 #from formation_builder.srv import transformation
 from formation_builder.srv import TransformPixelToWorld, TransformPixelToWorldResponse, TransformWorldToPixel, TransformWorldToPixelResponse
-from geometry_msgs.msg import Pose, Point
+from geometry_msgs.msg import Pose
 
-from visualization_msgs.msg import Marker, MarkerArray
 
 class Waypoint():
     def __init__(self, pixel_pos : tuple[int, int], occupied_from: float, occupied_until : float = float('inf'), world_pos : Pose|None = None, previous_waypoint:Waypoint|None = None):

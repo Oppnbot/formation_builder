@@ -3,20 +3,14 @@
 
 from __future__ import annotations
 
-import sensor_msgs.point_cloud2 as pc2
 import tf
 import rospy
-import math
 import numpy as np
 import ros_numpy
-from sensor_msgs.msg import PointCloud2, LaserScan, PointField
+from sensor_msgs.msg import PointCloud2, LaserScan
 from geometry_msgs.msg import TransformStamped
 from laser_geometry.laser_geometry import LaserProjection
-from visualization_msgs.msg import Marker, MarkerArray
 from tf2_sensor_msgs.tf2_sensor_msgs import do_transform_cloud
-from geometry_msgs.msg import Point
-from geometry_msgs.msg import Twist, PoseStamped, Point, Quaternion, Pose
-from tf.transformations import euler_from_quaternion
 
 class LaserScanner:
     def __init__(self, robot_id: int) -> None:
@@ -41,8 +35,6 @@ class LaserScanner:
 
     def get_laser_points(self) -> list[list[float]]:
         return self.front_laser_points + self.back_laser_points
-        return self.front_laser_points.extend(self.back_laser_points)
-        return np.vstack((self.front_laser_points, self.back_laser_points))
 
     
     def scanner_callback(self, scan: LaserScan, side : str) -> None:

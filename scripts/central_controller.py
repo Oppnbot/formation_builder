@@ -9,7 +9,6 @@ import time
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 from path_finder import PathFinder
-from path_follower import PathFollower
 from formation_builder.msg import Formation, GoalPose, Trajectory, Trajectories, FollowerFeedback
 from geometry_msgs.msg import Pose
 

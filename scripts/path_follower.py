@@ -6,17 +6,13 @@ from __future__ import annotations
 
 import time
 import rospy
-import actionlib
-import mbf_msgs.msg as mbf_msgs
 import numpy as np
-from visualization_msgs.msg import Marker, MarkerArray
-import sensor_msgs.point_cloud2 as pc2
-from sensor_msgs.msg import PointCloud2, LaserScan
-import laser_geometry.laser_geometry as laser_geometry
+from visualization_msgs.msg import Marker
+from sensor_msgs.msg import LaserScan
 from laser_scanner import LaserScanner
 
-from formation_builder.srv import TransformPixelToWorld, TransformPixelToWorldResponse, TransformWorldToPixel, TransformWorldToPixelResponse
-from geometry_msgs.msg import Twist, PoseStamped, Point, Quaternion, Pose
+from formation_builder.srv import TransformWorldToPixel, TransformWorldToPixelResponse
+from geometry_msgs.msg import Twist, PoseStamped, Point, Pose
 from formation_builder.msg import Trajectory, Trajectories, Waypoint, FollowerFeedback
 from tf.transformations import euler_from_quaternion
 
@@ -142,27 +138,21 @@ class PathFollower:
         _lower_rotation_limit : float = -self.max_angular_speed
 
         laser_points : list[list[float]] = self.scanner.get_laser_points()
-        is_ignoring : bool = False
-        is_colliding : bool = False
-        is_slowdown : bool = False
         crit_radius : float = np.hypot(self.robot_size_x / 2, self.robot_size_y / 2) * 1.05 # check rotational collision when object gets this close. multiplication factor for safety margin
         for point in laser_points:
             #* INVALID DATA FILTERING
             # Ignore Points that are inside our robot. this may happen if the laser scanner recognizes robot parts as obstacle
             if self.robot_size_x / 2 > abs(point[0]) and self.robot_size_y / 2 > abs(point[1]):
-                is_ignoring = True
                 continue
             #* LINEAR COLLISION AVOIDANCE
             # Check for very close obstacles -> stop
             if abs(point[0]) < self.stopping_x / 2 and abs(point[1]) < self.robot_size_y / 2:
-                is_colliding = True
                 if point[0] > 0:
                     _upper_linear_limit = 0.0
                 else:
                     _lower_linear_limit = 0.0
             # Check for somewhat close obstacles -> slowdown
             elif abs(point[0]) < self.slowdown_x / 2 and abs(point[1]) < self.slowdown_y / 2:
-                is_slowdown = True
                 slope: float = self.max_linear_speed / ((self.slowdown_x - self.stopping_x) / 2)
                 offset : float = -slope * self.stopping_x / 2
 
@@ -202,31 +192,10 @@ class PathFollower:
                 else:
                     _lower_rotation_limit = max(_lower_rotation_limit, -speed_factor * self.max_angular_speed)
           
-                    
-        #rospy.loginfo(f"lower {_lower_rotation_limit:3f}, upper {_upper_rotation_limit:.3f}")
-        #if _upper_rotation_limit == 0 or _lower_rotation_limit == 0:
-        #    rospy.logwarn(f"blocks directions c: {_lower_rotation_limit == 0} / cc: {_upper_rotation_limit == 0}")
-        #else:
-        #    rospy.loginfo("no rotational collision")    
-    
-        #rospy.loginfo(f"rotational limits: ")
-
-
-        #if is_ignoring:
-        #    rospy.logerr("invalid point is inside robot")
-        #if is_colliding:
-        #    rospy.logwarn(f"[FOLLOWER {self.robot_id}]: Stopping because collision is imminent!")
-        #elif is_slowdown:
-        #    rospy.logwarn(f"slowing down to {_upper_linear_limit:.3f} / {_lower_linear_limit:.3f}")
-        #else:
-        #    rospy.loginfo("no obstacle present")
-
         self.upper_linear_limit = _upper_linear_limit
         self.lower_linear_limit = _lower_linear_limit
         self.upper_rotation_limit = _upper_rotation_limit
-        self.lower_rotation_limit = _lower_rotation_limit
-            # Check if there are objects inside the slowdown area
-            #if abs(point[1]) < self.slowdown_width / 2 and abs(point[0]) < self.slowdown_height / 2:     
+        self.lower_rotation_limit = _lower_rotation_limit  
         return None
 
 
@@ -261,7 +230,7 @@ class PathFollower:
             rospy.logwarn(f"[Follower {self.robot_id}] Can't update the target point since Planner is not initialized")
             return None
         
-        if self.trajectory.planner_id == 1:
+        if self.trajectory.planner_id == 1 and self.target_waypoint is not None:
         
             marker_pub = rospy.Publisher('/formation_builder/pure_pursuit', Marker, queue_size=10, latch=True)
             marker: Marker = Marker()
@@ -469,5 +438,5 @@ class PathFollower:
             
 if __name__ == '__main__':
     rospy.init_node("path_follower")
-    planner_id = rospy.get_param('~robot_id', default=-1)
+    planner_id : int = rospy.get_param('~robot_id', default=-1) # type: ignore
     path_follower : PathFollower = PathFollower(planner_id)
