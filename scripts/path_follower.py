@@ -285,6 +285,8 @@ class PathFollower:
     def trajectory_update(self, trajectories: Trajectories) -> None:
         if trajectories.trajectories is None:
             return None
+        if self.robot_pose is None:
+            return None
         self.trajectory_start_time = 0.0
         self.trajectory : Trajectory | None = None
         for trajectory in trajectories.trajectories:
@@ -297,25 +299,28 @@ class PathFollower:
         if self.trajectory is None:
             rospy.loginfo(f"[Follower {self.robot_id}] No new Trajectory.")
             return None
-        rospy.loginfo(f"[Follower {self.robot_id}] Received a new Trajectory.")
+        
         self.stop_moving = False
+        self.reached_waypoints = 0
+        self.target_waypoint = trajectory.start_waypoint
+        rate : rospy.Rate = rospy.Rate(100)
         
         feedback : FollowerFeedback = FollowerFeedback()
         feedback.robot_id = self.robot_id
         feedback.status = feedback.FOLLOWING
         self.status_publisher.publish(feedback)
+        
+        distance_to_goal : float = self.get_distance(self.robot_pose, self.trajectory.goal_waypoint)
+        if (distance_to_goal > self.goal_tolerance * 3.0):
+            while not rospy.is_shutdown():
+                if self.follow_trajectory():
+                    break
+                if self.stop_moving:
+                    return None
+                rate.sleep()
+        else:
+            rospy.loginfo(f"[Follower {self.robot_id}] Received a new Trajectory but is already close enough to the goal position ({distance_to_goal:3f}m)")
 
-        self.reached_waypoints = 0
-        self.target_waypoint = trajectory.start_waypoint
-        rate : rospy.Rate = rospy.Rate(100)
-
-
-        while not rospy.is_shutdown():
-            if self.follow_trajectory():
-                break
-            if self.stop_moving:
-                return None
-            rate.sleep()
 
         while not rospy.is_shutdown():
             if self.rotate(self.trajectory.goal_waypoint.world_position.orientation.z):
@@ -364,7 +369,6 @@ class PathFollower:
         angular_speed : float = self.max_angular_speed
         min_angular_speed : float = 0.01 * self.max_angular_speed # min angular speed = 1% of max speed. #todo: make this a parameter (?)
         if abs(angle_error) < self.slowdown_angle:
-            
             angular_speed = self.max_angular_speed * min((abs(angle_error) / self.slowdown_angle), 1.0)
 
         angular_speed = min(self.max_angular_speed, max(min_angular_speed, angular_speed))
@@ -417,7 +421,9 @@ class PathFollower:
 
         distance_to_target = self.get_distance(self.robot_pose, self.target_waypoint)
         linear_speed, angular_speed = self.control_speeds(distance_to_target, steering_angle)
-        linear_speed : float = linear_speed * max(np.cos(2*steering_angle), 0)
+        linear_speed = linear_speed * max(np.cos(2*steering_angle), 0)
+        if abs(2*steering_angle) > np.pi / 4:
+            linear_speed = 0 # prevents robot from driving backwards at big angles where cos becomes positive again
 
         # Apply Robot Harware Limits
         linear_speed = min(self.max_linear_speed, max(-self.max_linear_speed, linear_speed))
