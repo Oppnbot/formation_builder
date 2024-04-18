@@ -267,7 +267,7 @@ class PathFollower:
             return self.trajectory.goal_waypoint
         
         distance_to_target : float = self.get_distance(self.robot_pose, self.target_waypoint)
-        while distance_to_target < self.lookahead_distance and len(self.trajectory.path) > self.reached_waypoints:
+        while (distance_to_target < self.lookahead_distance) and len(self.trajectory.path) > self.reached_waypoints:
             #if rospy.Time.now().secs + (distance_to_target / self.max_linear_speed) < self.target_waypoint.occupied_from + self.trajectory_start_time.secs:
             if time.time() - self.trajectory_start_time < self.trajectory.path[self.reached_waypoints].occupied_from:
                 #rospy.loginfo(f"[Follower {self.robot_id}] is too fast. expected to arrive at target at {time.time() + (distance_to_target / self.max_linear_speed)} but waypoint is occupied from {self.target_waypoint.occupied_from + self.trajectory_start_time}")
@@ -391,6 +391,8 @@ class PathFollower:
         target_waypoint : Waypoint | None = self.update_target_point()
         if target_waypoint is None:
             return False
+        if self.trajectory is None:
+            return False
         
         distance_to_target : float = self.get_distance(self.robot_pose, target_waypoint)
         
@@ -404,7 +406,7 @@ class PathFollower:
             self.status_publisher.publish(feedback)
             return False
         
-        if distance_to_target < self.goal_tolerance:
+        if distance_to_target < self.goal_tolerance and self.target_waypoint == self.trajectory.goal_waypoint:
             rospy.loginfo(f"[Follower {self.robot_id}] Reached the Goal Position with a tolerance of {distance_to_target:.3f} m")
             twist_msg = Twist()
             twist_msg.linear.x = 0.0
@@ -434,6 +436,11 @@ class PathFollower:
         linear_speed = min(linear_speed, self.upper_linear_limit)
         angular_speed = min(angular_speed, self.upper_rotation_limit)
         angular_speed = max(angular_speed, self.lower_rotation_limit)
+
+        # Stop Robot from Rotating at a Waiting Position
+        if distance_to_target < self.goal_tolerance:
+            angular_speed = 0
+            linear_speed = 0
 
         twist_msg = Twist()
         twist_msg.linear.x = linear_speed
