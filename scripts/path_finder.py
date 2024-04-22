@@ -26,11 +26,8 @@ import numpy as np
 import cv2
 import time
 import heapq
-#from commons import TrajectoryData, Waypoint
 from formation_builder.msg import Trajectory, PixelPos, GoalPose
 from formation_builder.msg import Waypoint as WaypointMsg
-#from visualization import fb_visualizer
-#from formation_builder.srv import transformation
 from formation_builder.srv import TransformPixelToWorld, TransformPixelToWorldResponse, TransformWorldToPixel, TransformWorldToPixelResponse
 from geometry_msgs.msg import Pose
 

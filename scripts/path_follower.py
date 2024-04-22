@@ -72,13 +72,7 @@ class PathFollower:
         self.target_waypoint : Waypoint | None = None
 
         rospy.Timer(rospy.Duration(1, 0), self.position_watchdog, oneshot=False)
-
-        #rospy.loginfo(f"[Follower {robot_id}] Waiting to connect to movement client...")
-        #self.movement_client : actionlib.SimpleActionClient = actionlib.SimpleActionClient(f"/mir{self.robot_id}/move_base_flex/move_base", mbf_msgs.MoveBaseAction)
-        #rospy.loginfo(f"[Follower {robot_id}] Connected!")
-
-        #self.follow_trajectory()
-        self.stop_robot() #for safety reasons, dont remove this
+        self.stop_robot() #for safety reasons, don't remove this! otherwise the robot may start follwing an old deprecated plan
         rospy.spin()
         return None
     
