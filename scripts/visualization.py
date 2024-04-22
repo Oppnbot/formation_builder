@@ -164,7 +164,7 @@ class Visualization():
     
 
     def receive_trajectories(self, trajectories : Trajectories) -> None:
-        rospy.logwarn("got a new trajectory")
+        rospy.logwarn("[Viz] got a new trajectory")
 
         self.trajectories = trajectories
         #self.show_live_path(trajectories)

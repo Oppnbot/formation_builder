@@ -20,7 +20,9 @@ class MapReader:
         self.input_map: OccupancyGrid | None = None
         self.cvbridge : CvBridge = CvBridge()
         rospy.init_node('map_reader')
-        rospy.Subscriber('/map', OccupancyGrid, self.read_map)
+        
+        rospy.Subscriber("/formation_builder/merged_costmap", OccupancyGrid, self.read_map)
+        #rospy.Subscriber('/map', OccupancyGrid, self.read_map)
         self.obstacles_pub : rospy.Publisher = rospy.Publisher('/formation_builder/static_obstacles', OccupancyGrid, queue_size=10, latch=True)
         self.image_pub : rospy.Publisher = rospy.Publisher('/formation_builder/map', Image, queue_size=10, latch=True)
         self.grid_map_pub : rospy.Publisher = rospy.Publisher('/formation_builder/gridmap', GridMap, queue_size=5, latch=True)
@@ -73,7 +75,7 @@ class MapReader:
         # Downscaling so that we get a useful gridsize for path planning. cell should be robot size
         grid_width : int = int(np.round(map_data.info.width * self.scaling_factor))
         grid_height : int = int(np.round(map_data.info.height * self.scaling_factor))
-        scaled_image = cv2.resize(eroded_image, (grid_width, grid_height), interpolation=cv2.INTER_LINEAR)
+        scaled_image = cv2.resize(orig_img_thresh, (grid_width, grid_height), interpolation=cv2.INTER_LINEAR)
         self.show_image(scaled_image, "Scaled")
 
         #* BINARIZE

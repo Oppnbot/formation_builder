@@ -109,8 +109,8 @@ class CostMapReader:
             if robot_id == ignore_robot:
                 continue
             for position in positions:
-                cv2.circle(image, position, clearing_radius, color=0, thickness=-1)
-        return np.int8(image)
+                cv2.circle(image, position, clearing_radius, color=0, thickness=-1)  # type: ignore
+        return np.int8(image) # type: ignore
     
 
     
