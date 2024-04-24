@@ -10,6 +10,8 @@ import numpy as np
 from visualization_msgs.msg import Marker
 from sensor_msgs.msg import LaserScan
 from laser_scanner import LaserScanner
+from nav_msgs.msg import OccupancyGrid
+import cv2
 
 from formation_builder.srv import TransformWorldToPixel, TransformWorldToPixelResponse
 from geometry_msgs.msg import Twist, PoseStamped, Point, Pose
@@ -25,9 +27,11 @@ class PathFollower:
         self.trajectory : Trajectory | None = None
         self.trajectory_start_time : float = 0
         self.robot_pose : Pose | None = None
+        self.costmap : OccupancyGrid | None = None
 
         # ---- Config Zone ----
-        self.lookahead_distance : float = 1.0   # higher distance -> smoother curves when driving but might leave path.
+        self.lookahead_distance : float = 1.0   # [m] higher distance -> smoother curves when driving but might leave path.
+        self.lookahead_time : float = 10        # [s] higher value -> earlier replanning when a collision with a previously unknown obstacle is inbound
         self.max_linear_speed : float = 1.2     # [m/s] max driving speed
         self.max_angular_speed : float = 1.0    # [rad/s] max rotation speed
         
@@ -63,6 +67,7 @@ class PathFollower:
         rospy.Subscriber(f'/mir{self.robot_id}/mir_pose_simple', Pose, self.update_pose)
         rospy.Subscriber(f'/mir{self.robot_id}/scan', LaserScan, self.safety_limit_update)
         rospy.Subscriber('/formation_builder/follower_status', FollowerFeedback, self.receive_feedback)
+        rospy.Subscriber('/formation_builder/static_obstacles', OccupancyGrid, self.update_costmap)
 
         self.goal_publisher = rospy.Publisher(f'/mir{self.robot_id}/move_base_simple/goal', PoseStamped, queue_size=10)
         self.cmd_publisher = rospy.Publisher(f'/mir{self.robot_id}/cmd_vel', Twist, queue_size=10)
@@ -80,9 +85,13 @@ class PathFollower:
     def receive_feedback(self, feedback : FollowerFeedback) -> None:
         if feedback.robot_id == self.robot_id:
             return None
-        if feedback.status in [feedback.LOST_WAYPOINT, feedback.OUTSIDE_RESERVED_AREA]:
+        if feedback.status in [feedback.LOST_WAYPOINT, feedback.OUTSIDE_RESERVED_AREA, feedback.PATH_BLOCKED]:
             self.stop_moving = True
             self.stop_robot()
+        return None
+    
+    def update_costmap(self, costmap: OccupancyGrid) -> None:
+        self.costmap = costmap
         return None
     
 
@@ -105,11 +114,13 @@ class PathFollower:
         y_pixel : int = int(w2p_response.y_pixel[0])
 
         # Check if both positon and time are valid (robot must be inside the currently reserved area)
+        current_waypoint : Waypoint | None = None
         is_in_reserved_area : bool = False
         for wp in self.trajectory.occupied_positions:
             waypoint : Waypoint = wp
             is_position_valid : bool = ((waypoint.pixel_position.x == x_pixel) and (waypoint.pixel_position.y == y_pixel))
             if is_position_valid:
+                current_waypoint = wp
                 #rospy.loginfo(f"[Follower {self.robot_id}] occupied from {waypoint.occupied_from} < {time.time() - self.trajectory_start_time} < {waypoint.occupied_until}")
                 is_in_reserved_area = waypoint.occupied_from <= time.time() - self.trajectory_start_time <= waypoint.occupied_until
                 break
@@ -121,7 +132,23 @@ class PathFollower:
             feedback.robot_id = self.robot_id
             feedback.status = feedback.OUTSIDE_RESERVED_AREA
             self.stop_moving = True
-            self.status_publisher.publish(feedback) 
+            self.status_publisher.publish(feedback)
+
+        # Check if there are obstacles in the way -> replan if a collision is expected within a given timeframe
+        if self.costmap is not None and current_waypoint is not None:
+            costmap_data : np.ndarray = np.reshape(self.costmap.data, (self.costmap.info.height, self.costmap.info.width))
+            for wp in self.trajectory.occupied_positions:
+                waypoint : Waypoint = wp
+                if current_waypoint.occupied_from <= waypoint.occupied_from <= current_waypoint.occupied_from + self.lookahead_time:
+                    if costmap_data[waypoint.pixel_position.x, waypoint.pixel_position.y] == 0:
+                        rospy.logwarn(f"[Follower {self.robot_id}] Object is blocking the path, Collision in {waypoint.occupied_from - current_waypoint.occupied_from}s (<{self.lookahead_time}s inbound!")
+                        self.stop_moving = True
+                        feedback : FollowerFeedback = FollowerFeedback()
+                        feedback.robot_id = self.robot_id
+                        feedback.status = feedback.PATH_BLOCKED
+                        self.stop_moving = True
+                        self.status_publisher.publish(feedback)
+                        return None
         return None
 
 
@@ -262,7 +289,7 @@ class PathFollower:
         
         distance_to_target : float = self.get_distance(self.robot_pose, self.target_waypoint)
         while (distance_to_target < self.lookahead_distance) and len(self.trajectory.path) > self.reached_waypoints:
-            #if rospy.Time.now().secs + (distance_to_target / self.max_linear_speed) < self.target_waypoint.occupied_from + self.trajectory_start_time.secs:
+            # Check for valid Occupation Time
             if time.time() - self.trajectory_start_time < self.trajectory.path[self.reached_waypoints].occupied_from:
                 #rospy.loginfo(f"[Follower {self.robot_id}] is too fast. expected to arrive at target at {time.time() + (distance_to_target / self.max_linear_speed)} but waypoint is occupied from {self.target_waypoint.occupied_from + self.trajectory_start_time}")
                 break

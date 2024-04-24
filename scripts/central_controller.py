@@ -58,6 +58,9 @@ class CentralController:
         if feedback.status == feedback.OUTSIDE_RESERVED_AREA:
             rospy.loginfo(f"[CController] Replanning because Robot {feedback.robot_id} left its reserved area.")
             self.build_formation(self.current_formation)
+        if feedback.status == feedback.PATH_BLOCKED:
+            rospy.loginfo(f"[CController] Replanning because Robot {feedback.robot_id} Path is blocked.")
+            self.build_formation(self.current_formation)
         return None
 
 

@@ -20,7 +20,7 @@ class LaserScanner:
         try:
             self.tf_listener.waitForTransform("map", f"mir{robot_id}/front_laser_link", rospy.Time(0), rospy.Duration(3))
             self.tf_listener.waitForTransform("map", f"mir{robot_id}/back_laser_link", rospy.Time(0), rospy.Duration(3))
-        finally:
+        except:  # noqa: E722
             pass
         self.scan_left_subscriber : rospy.Subscriber = rospy.Subscriber(f"/mir{robot_id}/f_scan", LaserScan, self.scanner_callback, 'front')
         self.scan_right_subscriber : rospy.Subscriber = rospy.Subscriber(f"/mir{robot_id}/b_scan", LaserScan, self.scanner_callback, 'back')
