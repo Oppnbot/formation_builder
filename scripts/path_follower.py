@@ -11,7 +11,6 @@ from visualization_msgs.msg import Marker
 from sensor_msgs.msg import LaserScan
 from laser_scanner import LaserScanner
 from nav_msgs.msg import OccupancyGrid
-import cv2
 
 from formation_builder.srv import TransformWorldToPixel, TransformWorldToPixelResponse
 from geometry_msgs.msg import Twist, PoseStamped, Point, Pose
@@ -31,7 +30,7 @@ class PathFollower:
 
         # ---- Config Zone ----
         self.lookahead_distance : float = 1.0   # [m] higher distance -> smoother curves when driving but might leave path.
-        self.lookahead_time : float = 10        # [s] higher value -> earlier replanning when a collision with a previously unknown obstacle is inbound
+        self.lookahead_time : float = 10        # [s] higher value -> earlier replanning when a collision with a previously unknown obstacle is inbound. please note that it may take a few seconds to update the obstacles, so >= 5s is advised
         self.max_linear_speed : float = 1.2     # [m/s] max driving speed
         self.max_angular_speed : float = 1.0    # [rad/s] max rotation speed
         
@@ -288,12 +287,19 @@ class PathFollower:
             return self.trajectory.goal_waypoint
         
         distance_to_target : float = self.get_distance(self.robot_pose, self.target_waypoint)
+        costmap_data : np.ndarray | None = None
+        if self.costmap is not None:
+            costmap_data = np.reshape(self.costmap.data, (self.costmap.info.height, self.costmap.info.width))
         while (distance_to_target < self.lookahead_distance) and len(self.trajectory.path) > self.reached_waypoints:
             # Check for valid Occupation Time
             if time.time() - self.trajectory_start_time < self.trajectory.path[self.reached_waypoints].occupied_from:
                 #rospy.loginfo(f"[Follower {self.robot_id}] is too fast. expected to arrive at target at {time.time() + (distance_to_target / self.max_linear_speed)} but waypoint is occupied from {self.target_waypoint.occupied_from + self.trajectory_start_time}")
                 break
+            if costmap_data is not None and costmap_data[self.target_waypoint.pixel_position.x, self.target_waypoint.pixel_position.y] == 0:
+                rospy.loginfo(f"[Follower {self.robot_id}] Waypoint is inside an obstacle")
+                break
             self.reached_waypoints += 1
+            
             if len(self.trajectory.path) <= self.reached_waypoints:
                 continue
             self.target_waypoint = self.trajectory.path[self.reached_waypoints]

@@ -16,7 +16,7 @@ class CostMapReader:
     def __init__(self) -> None:
         rospy.init_node('CostMapReader')
 
-        self.robot_tracing : int = 10 # how many of the last robot positions should be used to clear the robots previous path from the costmap?
+        self.robot_tracing : int = 5 # how many of the last robot positions should be used to clear the robots previous path from the costmap?
 
         self.costmaps : dict[int, OccupancyGrid] = {} # Original Costmaps. Useful since they contain infos about the data structure, header...
         self.costmap_data : dict[int, np.ndarray] = {} # Costmap Data. This is a reshaped version of the original for easier usage
@@ -38,9 +38,9 @@ class CostMapReader:
         self.robot_position_subscribers : list[rospy.Subscriber] = [rospy.Subscriber(f'/mir{robot_id}/mir_pose_simple', Pose, self.update_robot_pose, callback_args=robot_id) for robot_id in self.unique_mir_ids]
         self.clear_services : list[rospy.ServiceProxy] = [rospy.ServiceProxy(f"/mir{robot_id}/move_base_flex/clear_costmaps", Empty) for robot_id in self.unique_mir_ids]
 
-        rospy.Timer(rospy.Duration(1, 0), self.clear_costmaps, oneshot=False)
-        rospy.Timer(rospy.Duration(2, 0), self.merge_costmaps, oneshot=False)
-        rospy.Timer(rospy.Duration(1, 0), self.log_robot_positons, oneshot=False)
+        rospy.Timer(rospy.Duration.from_sec(0.5), self.clear_costmaps, oneshot=False)
+        rospy.Timer(rospy.Duration.from_sec(0.5), self.merge_costmaps, oneshot=False)
+        rospy.Timer(rospy.Duration.from_sec(0.1), self.log_robot_positons, oneshot=False)
         self.merged_costmap_publisher : rospy.Publisher = rospy.Publisher("/formation_builder/merged_costmap", OccupancyGrid, queue_size=5, latch=True)
         return None
 
@@ -89,9 +89,9 @@ class CostMapReader:
             for robot_id, position in self.robot_pixel_positions.items():
                 if robot_id == ignore_robot:
                     continue
-                is_inside_contour : bool = cv2.pointPolygonTest(contour, position, measureDist=False) >= 0
+                is_inside_contour : bool = cv2.pointPolygonTest(contour, position, measureDist=False) >= 0 # type: ignore since stubs are missing
                 if is_inside_contour:
-                    cv2.drawContours(image, [contour], -1, 0, cv2.FILLED) # type: ignore
+                    cv2.drawContours(image, [contour], -1, 0, cv2.FILLED) # type: ignore since stubs are missing
                     continue
         return np.int8(image) # type: ignore
     
