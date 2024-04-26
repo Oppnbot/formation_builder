@@ -244,7 +244,9 @@ class PathFinder:
             if self.check_dynamic_obstacles and (current_waypoint.pixel_pos in occupied_positions.keys()):
                 is_occupied : bool = False
                 for waypoint in occupied_positions[current_waypoint.pixel_pos]:
-                    if waypoint.occupied_from <= current_waypoint.occupied_from and current_waypoint.occupied_from + 30 < waypoint.occupied_until: #!
+                    current_wp_occ_until = current_waypoint.occupied_from + 3
+                    # does the occupation timeframe overlap with the occupation of a higher prio robot?
+                    if current_waypoint.occupied_from < waypoint.occupied_from < current_wp_occ_until or current_waypoint.occupied_from < waypoint.occupied_until < current_wp_occ_until:
                         rospy.logwarn(f"robot {self.id} would collide at position {current_waypoint.pixel_pos} after {current_cost}s while waiting. it is occupied between {waypoint.occupied_from}s -> {waypoint.occupied_until}s ")
                         is_occupied = True
                         if current_waypoint.previous_waypoint is not None:
@@ -276,7 +278,6 @@ class PathFinder:
                             if waypoint.occupied_from <= driving_cost <= waypoint.occupied_until:
                                 if waypoint.pixel_pos == goal_pos: # goalpos was found but occupied -> wait and stop searching
                                     heap = [(waypoint.occupied_until, current_waypoint)]
-                                current_waypoint.generation = waypoint.generation + 1
                                 heapq.heappush(heap, (waypoint.occupied_until, current_waypoint))
                                 is_occupied = True
                                 break
