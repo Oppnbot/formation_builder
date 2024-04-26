@@ -49,6 +49,7 @@ class Waypoint():
         self.occupied_from: float = occupied_from               # time when waypoint first becomes occupied, making it unavailable for other robots [s]
         self.occupied_until: float = occupied_until              # time when waypoint becomes free, making it available for other robots [s]
         self.previous_waypoint : Waypoint | None = previous_waypoint
+        self.generation : int = 0
 
     def __eq__(self, __value: Waypoint) -> bool:
         return self.pixel_pos == __value.pixel_pos
@@ -128,6 +129,11 @@ class PathFinder:
             new_waypoint : Waypoint = Waypoint(position, min_occupied_from, max_occupied_until)
             bloated_path.append(new_waypoint)
         return bloated_path
+    
+
+    def calc_occupation_time(self, waypoint : Waypoint):
+        waypoint.occupied_until = waypoint.occupied_from + waypoint.generation * 1.2 + 3.0
+        return None
 
 
 
@@ -148,6 +154,10 @@ class PathFinder:
             return None
         robot_start_pixel_pos : tuple[int, int] = (w2p_response.x_pixel[0], w2p_response.y_pixel[0])
         start_waypoint : Waypoint = Waypoint(robot_start_pixel_pos, 0.0)
+        
+        #cv2.imshow(f"static obst {self.id}", static_obstacles)
+        #cv2.waitKey()
+        static_obstacles[robot_start_pixel_pos[0], robot_start_pixel_pos[1]] = 1 #? this may prevent robots from being stuck in an obstacles inflation zone
 
         # Get goal position and transform it to pixel space
         w2p_response : TransformWorldToPixelResponse = transform_world_to_pixel([goal_pos.goal.position.x], [goal_pos.goal.position.y])
@@ -161,6 +171,7 @@ class PathFinder:
 
         
         bloating_time_start = time.time()
+        bloated_dynamic_obstacles : list[Waypoint] = []
         for dyn_obst in dynamic_obstacles:
             dynamic_obstacle : Trajectory = dyn_obst
 
@@ -168,11 +179,11 @@ class PathFinder:
                 continue
 
             waypoints : list[Waypoint] = [Waypoint((waypoint_msg.pixel_position.x, waypoint_msg.pixel_position.y), waypoint_msg.occupied_from, waypoint_msg.occupied_until) for waypoint_msg in dynamic_obstacle.occupied_positions]
-            bloated_dynamic_obstacles : list[Waypoint] = self.bloat_path(waypoints)
+            bloated_dynamic_obstacles = self.bloat_path(waypoints)
             for waypoint in bloated_dynamic_obstacles:
                 occupied_positions.setdefault(waypoint.pixel_pos, []).append(waypoint)
         bloating_time_done = time.time() 
-        rospy.loginfo(f"[Planner {self.id}] bloated paths. this took {bloating_time_done - bloating_time_start:.6f}s")
+        rospy.loginfo(f"[Planner {self.id}] inflated paths. this took {bloating_time_done - bloating_time_start:.6f}s")
 
         heap: list[tuple[float, Waypoint]] = [(0, start_waypoint)]
 
@@ -189,6 +200,13 @@ class PathFinder:
         
         timings: np.ndarray = np.full((rows, cols), -1.0)
         timings[robot_start_pixel_pos] = 0.0
+
+        # Adjust starting positions
+        if start_waypoint in bloated_dynamic_obstacles:
+            timings[robot_start_pixel_pos] = 100
+
+            rospy.logerr(f"[Planner {self.id}]: Other Robot driving through my starting pos!")
+
 
         
         direct_neighbors: list[tuple[int, int]] = [(1, 0), (-1, 0), (0, 1), (0, -1)]
@@ -226,8 +244,8 @@ class PathFinder:
             if self.check_dynamic_obstacles and (current_waypoint.pixel_pos in occupied_positions.keys()):
                 is_occupied : bool = False
                 for waypoint in occupied_positions[current_waypoint.pixel_pos]:
-                    if current_waypoint.occupied_from <= waypoint.occupied_from:
-                        #rospy.logwarn(f"robot {self.id} would collide at position {current_waypoint.pixel_pos} after {current_cost}s while waiting. it is occupied between {waypoint.occupied_from}s -> {waypoint.occupied_until}s ")
+                    if waypoint.occupied_from <= current_waypoint.occupied_from and current_waypoint.occupied_from + 30 < waypoint.occupied_until: #!
+                        rospy.logwarn(f"robot {self.id} would collide at position {current_waypoint.pixel_pos} after {current_cost}s while waiting. it is occupied between {waypoint.occupied_from}s -> {waypoint.occupied_until}s ")
                         is_occupied = True
                         if current_waypoint.previous_waypoint is not None:
                             #rospy.loginfo(f"will wait at {current_waypoint.previous_waypoint.pixel_pos} until {waypoint.occupied_until}")
@@ -258,6 +276,7 @@ class PathFinder:
                             if waypoint.occupied_from <= driving_cost <= waypoint.occupied_until:
                                 if waypoint.pixel_pos == goal_pos: # goalpos was found but occupied -> wait and stop searching
                                     heap = [(waypoint.occupied_until, current_waypoint)]
+                                current_waypoint.generation = waypoint.generation + 1
                                 heapq.heappush(heap, (waypoint.occupied_until, current_waypoint))
                                 is_occupied = True
                                 break
@@ -294,14 +313,8 @@ class PathFinder:
 
         bloated_waypoints : list[Waypoint] = self.bloat_path(waypoints)
 
-        
-
         pathfind_done_time = time.time()
         rospy.loginfo(f"[Planner {self.id}] Found a path. This took {pathfind_done_time-pathfind_start_time:.6f}s")
-        
-
-
-
         rospy.loginfo(f"[Planner {self.id}] Shortest path consists of {len(waypoints)} nodes with a cost of {timings[robot_goal_pixel_pos[0], robot_goal_pixel_pos[1]]}")
 
         # Transform Path from Pixel-Space to World-Space for visualization and path following

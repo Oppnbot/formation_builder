@@ -89,6 +89,7 @@ class PathFollower:
             self.stop_robot()
         return None
     
+
     def update_costmap(self, costmap: OccupancyGrid) -> None:
         self.costmap = costmap
         return None
@@ -145,7 +146,7 @@ class PathFollower:
                         feedback : FollowerFeedback = FollowerFeedback()
                         feedback.robot_id = self.robot_id
                         feedback.status = feedback.PATH_BLOCKED
-                        self.stop_moving = True
+                        self.stop_robot()
                         self.status_publisher.publish(feedback)
                         return None
         return None
@@ -228,6 +229,7 @@ class PathFollower:
         twist_msg.angular.y = 0.0
         twist_msg.angular.z = 0.0
         self.cmd_publisher.publish(twist_msg)
+        self.stop_moving = True
         return None
     
 
