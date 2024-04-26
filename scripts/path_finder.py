@@ -76,6 +76,9 @@ class Waypoint():
 class PathFinder:
     def __init__(self, planner_id : int = 0):
         # -------- CONFIG START --------
+        self.static_time_tolerance: float = 3.0     # [s] estimation of how long the robot needs to travel between two grid spaces. will add a static length to the "snakes"
+        self.dynamic_time_tolerance : float = 1.1   # [s] estimation of motion uncertainty. lets "snakes" grow over time
+
         self.allow_straights : bool = True   # allows the following movements: 0°, 90°, 180°, 380° 
         self.allow_diagonals : bool = True   # allows the following movements: 45°, 135°, 225°, 315°
         self.allow_knight_moves: bool = False # allows the following movements: 26°, 63°, 116°, 153°, 206°, 243°, 296°, 333° (like a knight in chess)
@@ -130,11 +133,6 @@ class PathFinder:
             bloated_path.append(new_waypoint)
         return bloated_path
     
-
-    def calc_occupation_time(self, waypoint : Waypoint):
-        waypoint.occupied_until = waypoint.occupied_from + waypoint.generation * 1.2 + 3.0
-        return None
-
 
 
     def search_path(self, static_obstacles: np.ndarray, goal_pos: GoalPose, dynamic_obstacles: list[Trajectory] = []) -> Trajectory | None:
@@ -244,10 +242,10 @@ class PathFinder:
             if self.check_dynamic_obstacles and (current_waypoint.pixel_pos in occupied_positions.keys()):
                 is_occupied : bool = False
                 for waypoint in occupied_positions[current_waypoint.pixel_pos]:
-                    current_wp_occ_until = current_waypoint.occupied_from + 3
+                    current_wp_occ_until = current_waypoint.occupied_from * self.dynamic_time_tolerance + self.static_time_tolerance
                     # does the occupation timeframe overlap with the occupation of a higher prio robot?
                     if current_waypoint.occupied_from < waypoint.occupied_from < current_wp_occ_until or current_waypoint.occupied_from < waypoint.occupied_until < current_wp_occ_until:
-                        rospy.logwarn(f"robot {self.id} would collide at position {current_waypoint.pixel_pos} after {current_cost}s while waiting. it is occupied between {waypoint.occupied_from}s -> {waypoint.occupied_until}s ")
+                        #rospy.logwarn(f"robot {self.id} would collide at position {current_waypoint.pixel_pos} after {current_cost}s while waiting. it is occupied between {waypoint.occupied_from}s -> {waypoint.occupied_until}s ")
                         is_occupied = True
                         if current_waypoint.previous_waypoint is not None:
                             #rospy.loginfo(f"will wait at {current_waypoint.previous_waypoint.pixel_pos} until {waypoint.occupied_until}")
@@ -305,7 +303,7 @@ class PathFinder:
         current_waypoint : Waypoint | None = goal_waypoint
         while current_waypoint:
             if current_waypoint.previous_waypoint is not None:
-                current_waypoint.previous_waypoint.occupied_until = (current_waypoint.occupied_from + 1)* 1.2 + 3.0 # todo: define different metrics here #*1.3+1.0
+                current_waypoint.previous_waypoint.occupied_until = (current_waypoint.occupied_from + 1) * self.dynamic_time_tolerance + self.static_time_tolerance
             waypoints.append(current_waypoint)
             current_waypoint = current_waypoint.previous_waypoint
             #if self.dynamic_visualization:
