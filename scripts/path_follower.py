@@ -38,10 +38,10 @@ class PathFollower:
         self.rotation_tolerance : float = 0.002 # [rad] angle at which the goal rotation is considered to be reached
         self.slowdown_angle : float = 0.25 # [rad] angle at which the slowdown begins. might take longer to reach the desired orientation but will allow for higher precision
         
-        self.slowdown_x : float = 3.5 # [m] defines a boxes x-axis that causes slowdowns to the robots speed if objects enter it
-        self.slowdown_y : float = 2.0 # [m] defines a boxes y-axis that causes slowdowns to the robots speed if objects enter it
+        self.slowdown_x : float = 3.0 # [m] defines a boxes x-axis that causes slowdowns to the robots speed if objects enter it
+        self.slowdown_y : float = 1.4 # [m] defines a boxes y-axis that causes slowdowns to the robots speed if objects enter it
         self.stopping_x: float = 1.50 # [m]defines a box that x-axis causes a stop to the robots speed if objects enter it
-        self.stopping_y: float = 1.00 # [m] defines a box that y-axis causes a stop to the robots speed if objects enter it
+        self.stopping_y: float = 0.90 # [m] defines a box that y-axis causes a stop to the robots speed if objects enter it
         self.robot_size_x : float = 1.25 # [m] robot size along x-axis. will igonore laser scans values within this range
         self.robot_size_y : float = 0.85 # [m] robot size along y-axis. will igonore laser scans values within this range
         # ---- End Config ----
