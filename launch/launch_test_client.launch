@@ -1,6 +1,0 @@
-<?xml version="1.0" ?>
-<launch>
-
-    <!-- Start print_node -->
-    <node name="drive_with_client" pkg="formation_builder" type="drive_with_client.py" output="screen" />
-</launch>
