@@ -1,0 +1,26 @@
+Here are all Nodes that need to be launched in order to use this project
+
+
+*** LAUNCH ON ROSCORE: login via "ssh roscore"
+roscore
+
+*** LAUNCH ON ROBOTS: login via "ssh mur620x" (replace x with a, b, c, d) and paste the 2 commands for each robot x. ***
+
+ROS_NAMESPACE=mir1 roslaunch mir_launch_hardware mir_600.launch tf_prefix:=mir1
+roslaunch formation_builder launch_follower_single.launch robot_id:=1
+
+ROS_NAMESPACE=mir2 roslaunch mir_launch_hardware mir_600.launch tf_prefix:=mir2
+roslaunch formation_builder launch_follower_single.launch robot_id:=2
+
+ROS_NAMESPACE=mir3 roslaunch mir_launch_hardware mir_600.launch tf_prefix:=mir3
+roslaunch formation_builder launch_follower_single.launch robot_id:=3
+
+ROS_NAMESPACE=mir4 roslaunch mir_launch_hardware mir_600.launch tf_prefix:=mir4
+roslaunch formation_builder launch_follower_single.launch robot_id:=4
+
+
+
+*** LAUNCH ON MAIN PC ***
+roslaunch formation_builder launch_rviz_only.launch
+roslaunch formation_builder launch_map_reader.launch
+roslaunch formation_builder central_controller.launch
