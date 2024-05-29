@@ -134,7 +134,8 @@ if __name__ == '__main__':
 
     test_formation : Formation = Formation()
     test_formation.goal_poses = []
-    goal_positions : list[tuple[float, float]] = [(50, 20), (50, 19), (30, 18), (51.1, 20)]
+    #goal_positions : list[tuple[float, float]] = [(50, 20), (50, 19), (30, 18), (51.1, 20)]
+    goal_positions : list[tuple[float, float]] = [(35, 30), (35, 32.5)] #, (35, 35), (38.5, 30)]
     for index, goal_position in enumerate(goal_positions):
         test_formation.goal_poses.append(central_controller.generate_formation_position(index+1, goal_position, size=1.0))
 

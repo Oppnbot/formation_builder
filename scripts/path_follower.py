@@ -31,17 +31,17 @@ class PathFollower:
         # ---- Config Zone ----
         self.lookahead_distance : float = 1.0   # [m] higher distance -> smoother curves when driving but might leave path.
         self.lookahead_time : float = 10        # [s] higher value -> earlier replanning when a collision with a previously unknown obstacle is inbound. please note that it may take a few seconds to update the obstacles, so >= 5s is advised
-        self.max_linear_speed : float = 1.2     # [m/s] max driving speed
-        self.max_angular_speed : float = 1.0    # [rad/s] max rotation speed
+        self.max_linear_speed : float = 0.15     # [m/s] max driving speed
+        self.max_angular_speed : float = 0.2    # [rad/s] max rotation speed
         
         self.goal_tolerance : float = 0.05 # [m] distance at which the goal position is considered to be reached
         self.rotation_tolerance : float = 0.002 # [rad] angle at which the goal rotation is considered to be reached
         self.slowdown_angle : float = 0.25 # [rad] angle at which the slowdown begins. might take longer to reach the desired orientation but will allow for higher precision
         
-        self.slowdown_x : float = 3.0 # [m] defines a boxes x-axis that causes slowdowns to the robots speed if objects enter it
-        self.slowdown_y : float = 0.7 # [m] defines a boxes y-axis that causes slowdowns to the robots speed if objects enter it
-        self.stopping_x: float = 1.1 # [m]defines a box that x-axis causes a stop to the robots speed if objects enter it
-        self.stopping_y : float = 0.7 # [m] defines a box that y-axis causes a stop to the robots speed if objects enter it
+        self.slowdown_x : float = 4.0 # [m] defines a boxes x-axis that causes slowdowns to the robots speed if objects enter it
+        self.slowdown_y : float = 0.9 # [m] defines a boxes y-axis that causes slowdowns to the robots speed if objects enter it
+        self.stopping_x: float = 1.5 # [m]defines a box that x-axis causes a stop to the robots speed if objects enter it
+        self.stopping_y : float = 0.9 # [m] defines a box that y-axis causes a stop to the robots speed if objects enter it
         self.robot_size_x : float = 0.9 # [m] robot size along x-axis. will igonore laser scans values within this range
         self.robot_size_y : float = 0.6 # [m] robot size along y-axis. will igonore laser scans values within this range
         # ---- End Config ----
@@ -63,7 +63,7 @@ class PathFollower:
         while not self.scanner.initialized:
             rate.sleep()
         rospy.Subscriber('formation_builder/trajectories', Trajectories, self.trajectory_update)
-        rospy.Subscriber(f'/mir{self.robot_id}/mir_pose_simple', Pose, self.update_pose)
+        rospy.Subscriber(f'/mir{self.robot_id}/robot_pose', Pose, self.update_pose)
         rospy.Subscriber(f'/mir{self.robot_id}/scan', LaserScan, self.safety_limit_update)
         rospy.Subscriber('/formation_builder/follower_status', FollowerFeedback, self.receive_feedback)
         rospy.Subscriber('/formation_builder/static_obstacles', OccupancyGrid, self.update_costmap)

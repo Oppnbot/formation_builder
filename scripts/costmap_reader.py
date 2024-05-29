@@ -16,7 +16,7 @@ class CostMapReader:
     def __init__(self) -> None:
         rospy.init_node('CostMapReader')
 
-        self.robot_tracing : int = 5 # how many of the last robot positions should be used to clear the robots previous path from the costmap?
+        self.robot_tracing : int = 10 # how many of the last robot positions should be used to clear the robots previous path from the costmap?
 
         self.costmaps : dict[int, OccupancyGrid] = {} # Original Costmaps. Useful since they contain infos about the data structure, header...
         self.costmap_data : dict[int, np.ndarray] = {} # Costmap Data. This is a reshaped version of the original for easier usage
@@ -35,7 +35,7 @@ class CostMapReader:
 
         self.costmap_subscribers : list[rospy.Subscriber] = [rospy.Subscriber(f"/mir{robot_id}/move_base_flex/global_costmap/costmap", OccupancyGrid, self.read_costmap, callback_args=robot_id) for robot_id in self.unique_mir_ids]
         self.costmap_update_subscribers : list[rospy.Subscriber] = [rospy.Subscriber(f"/mir{robot_id}/move_base_flex/global_costmap/costmap_updates", OccupancyGridUpdate, self.update_costmap, callback_args=robot_id) for robot_id in self.unique_mir_ids]
-        self.robot_position_subscribers : list[rospy.Subscriber] = [rospy.Subscriber(f'/mir{robot_id}/mir_pose_simple', Pose, self.update_robot_pose, callback_args=robot_id) for robot_id in self.unique_mir_ids]
+        self.robot_position_subscribers : list[rospy.Subscriber] = [rospy.Subscriber(f'/mir{robot_id}/robot_pose', Pose, self.update_robot_pose, callback_args=robot_id) for robot_id in self.unique_mir_ids]
         self.clear_services : list[rospy.ServiceProxy] = [rospy.ServiceProxy(f"/mir{robot_id}/move_base_flex/clear_costmaps", Empty) for robot_id in self.unique_mir_ids]
 
         rospy.Timer(rospy.Duration.from_sec(0.5), self.clear_costmaps, oneshot=False)
@@ -103,7 +103,7 @@ class CostMapReader:
         costmap_masked = np.where(valid_pixels, costmap, 0)
         image : np.ndarray = np.uint8(costmap_masked) # type: ignore
         
-        robot_size : float = 1.0
+        robot_size : float = 1.8
         clearing_radius : int = int(np.round(robot_size / self.costmaps[ignore_robot].info.resolution)) # todo: make this a config parameter
         for robot_id, positions in self.robot_pixel_positions.items():
             if robot_id == ignore_robot:

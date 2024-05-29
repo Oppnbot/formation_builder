@@ -76,7 +76,7 @@ class Waypoint():
 class PathFinder:
     def __init__(self, planner_id : int = 0):
         # -------- CONFIG START --------
-        self.static_time_tolerance: float = 3.0     # [s] estimation of how long the robot needs to travel between two grid spaces. will add a static length to the "snakes"
+        self.static_time_tolerance: float = 6.0     # [s] estimation of how long the robot needs to travel between two grid spaces. will add a static length to the "snakes"
         self.dynamic_time_tolerance : float = 1.1   # [s] estimation of motion uncertainty. lets "snakes" grow over time
 
         self.allow_straights : bool = True   # allows the following movements: 0°, 90°, 180°, 380° 
@@ -86,12 +86,12 @@ class PathFinder:
         self.check_dynamic_obstacles : bool = True
         self.dynamic_visualization : bool = False # publishes timing map after every step, very expensive
         self.kernel_size : int = 3 #!kernel size -> defines the safety margins for dynamic and static obstacles; grid_size * kernel_size = robot_size
-        self.speed : float = 1.0
+        self.speed : float = 0.275
         # -------- CONFIG END --------
         
         self.id: int = planner_id
         self.robot_pose : Pose | None = None
-        rospy.Subscriber(f'/mir{self.id}/mir_pose_simple', Pose, self.update_pose)
+        rospy.Subscriber(f'/mir{self.id}/robot_pose', Pose, self.update_pose)
         #self.trajectory_publisher : rospy.Publisher = rospy.Publisher('formation_builder/trajectory', Trajectory, queue_size=10, latch=True)
         return None
 
@@ -136,9 +136,11 @@ class PathFinder:
 
 
     def search_path(self, static_obstacles: np.ndarray, goal_pos: GoalPose, dynamic_obstacles: list[Trajectory] = []) -> Trajectory | None:
-        if self.robot_pose is None:
-            rospy.logwarn(f"[Planner {self.id}] failed to plan path, since robot position is unknown.")
-            return None
+        iterations : int = 0
+        while self.robot_pose is None:
+            rospy.logwarn(f"[Planner {self.id}] failed to plan path, waiting for robot position update. Retrying...")
+            rospy.sleep(0.25)
+            iterations += 1
         rospy.loginfo(f"[Planner {self.id}] Starting Trajectory Search")
 
         start_time = time.time()
