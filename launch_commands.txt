@@ -24,3 +24,8 @@ roslaunch formation_builder launch_follower_single.launch robot_id:=4
 roslaunch formation_builder launch_rviz_only.launch
 roslaunch formation_builder launch_map_reader.launch
 roslaunch formation_builder central_controller.launch
+
+
+
+*** OPTIONAL: Recording ***
+rosbag record -a -O rosbagname.bag

@@ -38,8 +38,8 @@ class CostMapReader:
         self.robot_position_subscribers : list[rospy.Subscriber] = [rospy.Subscriber(f'/mir{robot_id}/robot_pose', Pose, self.update_robot_pose, callback_args=robot_id) for robot_id in self.unique_mir_ids]
         self.clear_services : list[rospy.ServiceProxy] = [rospy.ServiceProxy(f"/mir{robot_id}/move_base_flex/clear_costmaps", Empty) for robot_id in self.unique_mir_ids]
 
-        rospy.Timer(rospy.Duration.from_sec(0.5), self.clear_costmaps, oneshot=False)
-        rospy.Timer(rospy.Duration.from_sec(0.5), self.merge_costmaps, oneshot=False)
+        rospy.Timer(rospy.Duration.from_sec(1.0), self.clear_costmaps, oneshot=False)
+        rospy.Timer(rospy.Duration.from_sec(1.0), self.merge_costmaps, oneshot=False)
         rospy.Timer(rospy.Duration.from_sec(0.1), self.log_robot_positons, oneshot=False)
         self.merged_costmap_publisher : rospy.Publisher = rospy.Publisher("/formation_builder/merged_costmap", OccupancyGrid, queue_size=5, latch=True)
         return None
