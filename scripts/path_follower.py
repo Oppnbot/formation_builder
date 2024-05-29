@@ -40,8 +40,8 @@ class PathFollower:
         
         self.slowdown_x : float = 3.5 # [m] defines a boxes x-axis that causes slowdowns to the robots speed if objects enter it
         self.slowdown_y : float = 2.0 # [m] defines a boxes y-axis that causes slowdowns to the robots speed if objects enter it
-        self.stopping_x: float = 1.75 # [m]defines a box that x-axis causes a stop to the robots speed if objects enter it
-        self.stopping_y: float = 1.35 # [m] defines a box that y-axis causes a stop to the robots speed if objects enter it
+        self.stopping_x: float = 1.50 # [m]defines a box that x-axis causes a stop to the robots speed if objects enter it
+        self.stopping_y: float = 1.00 # [m] defines a box that y-axis causes a stop to the robots speed if objects enter it
         self.robot_size_x : float = 1.25 # [m] robot size along x-axis. will igonore laser scans values within this range
         self.robot_size_y : float = 0.85 # [m] robot size along y-axis. will igonore laser scans values within this range
         # ---- End Config ----
