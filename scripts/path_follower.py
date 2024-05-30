@@ -64,6 +64,7 @@ class PathFollower:
             rate.sleep()
         rospy.Subscriber('formation_builder/trajectories', Trajectories, self.trajectory_update)
         rospy.Subscriber(f'/mir{self.robot_id}/robot_pose', Pose, self.update_pose)
+        rospy.Subscriber(f'/mir{self.robot_id}/mir_pose_simple', Pose, self.update_pose)
         rospy.Subscriber(f'/mir{self.robot_id}/scan', LaserScan, self.safety_limit_update)
         rospy.Subscriber('/formation_builder/follower_status', FollowerFeedback, self.receive_feedback)
         rospy.Subscriber('/formation_builder/static_obstacles', OccupancyGrid, self.update_costmap)
@@ -294,9 +295,13 @@ class PathFollower:
             costmap_data = np.reshape(self.costmap.data, (self.costmap.info.height, self.costmap.info.width))
         while (distance_to_target < self.lookahead_distance) and len(self.trajectory.path) > self.reached_waypoints:
             # Check for valid Occupation Time
-            if time.time() - self.trajectory_start_time < self.trajectory.path[self.reached_waypoints].occupied_from:
+            waypoint_limit = self.reached_waypoints + 1
+            if waypoint_limit >= len(self.trajectory.path):
+                waypoint_limit = len(self.trajectory.path) - 1 
+            if time.time() - self.trajectory_start_time <= self.trajectory.path[waypoint_limit].occupied_from:
                 #rospy.loginfo(f"[Follower {self.robot_id}] is too fast. expected to arrive at target at {time.time() + (distance_to_target / self.max_linear_speed)} but waypoint is occupied from {self.target_waypoint.occupied_from + self.trajectory_start_time}")
                 break
+
             if costmap_data is not None and costmap_data[self.target_waypoint.pixel_position.x, self.target_waypoint.pixel_position.y] == 0:
                 rospy.loginfo(f"[Follower {self.robot_id}] Waypoint is inside an obstacle")
                 break
@@ -315,6 +320,7 @@ class PathFollower:
         if trajectories.trajectories is None:
             return None
         if self.robot_pose is None:
+            rospy.logwarn(f"[Follower {self.robot_id}] Waiting for Robot Pose")
             return None
         self.trajectory_start_time = 0.0
         self.trajectory : Trajectory | None = None
@@ -328,6 +334,7 @@ class PathFollower:
         if self.trajectory is None:
             rospy.loginfo(f"[Follower {self.robot_id}] No new Trajectory.")
             return None
+        rospy.loginfo(f"[Follower {self.robot_id}] Received a new Trajectory")
         
         self.stop_moving = False
         self.reached_waypoints = 0
@@ -443,7 +450,10 @@ class PathFollower:
             self.cmd_publisher.publish(twist_msg)
             return True
 
+        
         angle_to_target : float = self.get_angle(self.robot_pose, self.target_waypoint)
+        if self.target_waypoint == self.trajectory.start_waypoint and not self.target_waypoint == self.trajectory.goal_waypoint and self.trajectory.path is not None and len(self.trajectory.path) > 1:
+            angle_to_target = self.get_angle(self.robot_pose, self.trajectory.path[1])
         steering_angle : float = angle_to_target - self.robot_yaw
         if steering_angle > np.pi:
             steering_angle -= 2 * np.pi

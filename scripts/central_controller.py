@@ -55,14 +55,12 @@ class CentralController:
         if feedback.status == feedback.LOST_WAYPOINT:
             rospy.loginfo(f"[CController] Replanning because Robot {feedback.robot_id} lost its waypoint.")
             self.build_formation(self.current_formation)
-        elif feedback.status == feedback.OUTSIDE_RESERVED_AREA:
+        if feedback.status == feedback.OUTSIDE_RESERVED_AREA:
             rospy.loginfo(f"[CController] Replanning because Robot {feedback.robot_id} left its reserved area.")
             self.build_formation(self.current_formation)
-        elif feedback.status == feedback.PATH_BLOCKED:
+        if feedback.status == feedback.PATH_BLOCKED:
             rospy.loginfo(f"[CController] Replanning because Robot {feedback.robot_id} Path is blocked.")
             self.build_formation(self.current_formation)
-        else:
-            rospy.logerr(f"[CController] Robot {feedback.robot_id} sent unknown follower feedback: {feedback.status}.")
         return None
     
     def check_priorities(self) -> bool:
