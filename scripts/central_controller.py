@@ -61,44 +61,55 @@ class CentralController:
         elif feedback.status == feedback.PATH_BLOCKED:
             rospy.loginfo(f"[CController] Replanning because Robot {feedback.robot_id} Path is blocked.")
             self.build_formation(self.current_formation)
-        elif feedback.status == feedback.PLANNING_FAILED:
-            #self.reorder_priorites(feedback.robot_id)
-            pass
         else:
             rospy.logerr(f"[CController] Robot {feedback.robot_id} sent unknown follower feedback: {feedback.status}.")
         return None
     
-    
-    def reorder_priorites(self, robot_id) -> bool:
-        if robot_id in self.unique_mir_ids:
-            index : int = list(self.unique_mir_ids).index(robot_id)
-            if index == 0:
-                rospy.logerr(f"[CController] Planning failed! Robot {robot_id} can't reach the goal!")
+    def check_priorities(self) -> bool:
+        if self.current_formation is None or self.current_formation.goal_poses is None:
+            rospy.logerr(f"[CController] Can't check priorities since goal poses or current formation are None")
+            return False
+        prio_counter : dict[int, int] = {}
+        for goal_pose in self.current_formation.goal_poses:
+            if goal_pose.priority is None:
+                rospy.loginfo(f"[CController] Priority of Robot {goal_pose.planner_id} is None. Will reset priorities")
                 return False
-            if self.current_formation is not None and self.current_formation.goal_poses is not None and index < len(self.current_formation.goal_poses):
-                # Swap positions of the failed and highest prio robots #! make this smarter
-                current_order : list[int] = [goal_pos.planner_id for goal_pos in self.current_formation.goal_poses]
-                robot_index = next((i for i, goal_pose in enumerate(self.current_formation.goal_poses) if goal_pose.planner_id == robot_id), -1)
-                current_order.pop(robot_index)
-                current_order.insert(0, robot_id)
-                if robot_index == 0:
-                    rospy.logerr(f"[CController] Planning failed! Robot {robot_id} can't reach the goal!")
-                    return False
-                rospy.loginfo(f"[CController] Set robot {robot_id} to highest Prio")
-                # adjust ids of remaining robots
-                for index, goal_pose in enumerate(self.current_formation.goal_poses):
-                    goal_pose.planner_id = current_order[index]
-                return True
-            else:
-                if self.current_formation is None:
-                    rospy.logerr(f"[CController] Can't change Priority of Robot {robot_id} since current formation is None")
-                elif self.current_formation.goal_poses is None:
-                    rospy.logerr(f"[CController] Can't change Priority of Robot {robot_id} since goal poses are None")
-                else:
-                    rospy.logerr(f"[CController] Can't change Priority of Robot {robot_id} since index: {index} < length of goal poses: {len(self.current_formation.goal_poses)}")
-        else:
-            rospy.logwarn(f"[CController] Can't change Priority of Robot {robot_id} since its not an element in the unique robot ids: {self.unique_mir_ids}")
-        return False
+            prio_counter[goal_pose.priority] = prio_counter.get(goal_pose.priority, 0) + 1
+
+        for prio, count in prio_counter.items():
+            if count != 1:
+                rospy.logwarn(f"[CController] Priority {prio} is assigned to multiple ({count}) robots. Will reset priorities")
+                return False
+        return True
+
+    def initialize_priorities(self) -> None:
+        if self.current_formation is None or self.current_formation.goal_poses is None:
+            rospy.logwarn(f"[CController] Can't initialize priorities since goal poses or current formation are None")
+            return None
+        for index, goal_pose in enumerate(self.current_formation.goal_poses):
+            goal_pose.priority = index + 1
+        return None
+    
+    
+    def reassign_priorities(self, robot_id : int) -> bool:
+        if self.current_formation is None or self.current_formation.goal_poses is None:
+            rospy.logerr(f"[CController] Can't change Priority of Robot {robot_id} since goal poses or current formation are None")
+            return False
+        # set failed planner to highest priority
+        prio_failed_robot : int = -1
+        for goal_pose in self.current_formation.goal_poses:
+            if goal_pose.planner_id == robot_id:
+                prio_failed_robot = goal_pose.priority
+                goal_pose.priority = 1
+                break
+        if prio_failed_robot == -1:
+            rospy.logerr(f"[CController] Can't change Priority of Robot {robot_id} since planner id seems to not exist in the current formation.")
+            return False
+        # adjust priorities of remaining robots
+        for goal_pose in self.current_formation.goal_poses:
+            if goal_pose.planner_id != robot_id and goal_pose.priority < prio_failed_robot:
+                goal_pose.priority += 1
+        return True
 
 
     def build_formation(self, formation : Formation) -> None:
@@ -111,9 +122,15 @@ class CentralController:
         self.current_formation = formation
         start_time : float = time.time()
         rospy.loginfo(f"[CController] Received a planning request for {len(formation.goal_poses)} robots.")
+
+        while not self.check_priorities():
+            self.initialize_priorities()
+        else:
+            rospy.loginfo("[CController] Priorities are set correctly.")
         
         planned_trajectories : list[Trajectory] = []
         failed_planner : int | None = None
+        formation.goal_poses.sort(key=lambda x: x.priority)
         for gp in formation.goal_poses:
             goal_pose : GoalPose = gp
             if goal_pose.planner_id not in self.path_finders.keys():
@@ -134,9 +151,17 @@ class CentralController:
 
         if failed_planner is not None:
             rospy.logwarn(f"[CController] ------------ Planning failed! ({time.time()-start_time:.3f}s) ------------ ")
-            if self.reorder_priorites(failed_planner):
+            for goal_pose in formation.goal_poses:
+                if goal_pose.planner_id == failed_planner:
+                    if goal_pose.priority == 1:
+                        rospy.logerr(f"[CController] Planner {failed_planner} failed with highest priority. There is no valid solution.")
+                        return None
+                    break
+            if self.reassign_priorities(failed_planner):
                 rospy.loginfo("[CController] Retrying with reordered priorites...")
                 self.build_formation(self.current_formation)
+            else:
+                rospy.logerr(f"[CController] Failed to replan with reordered priorities.")
             return None
 
         rospy.loginfo(f"[CController] ------------ Planning done! ({time.time()-start_time:.3f}s) ------------ ")

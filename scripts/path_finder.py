@@ -231,7 +231,7 @@ class PathFinder:
                 rospy.loginfo(f"[Planner {self.id}] {iterations} iterations done!")
             if iterations > max_iterations:
                 rospy.logwarn(f"[Planner {self.id}] breaking because algorithm reached max iterations {max_iterations}")
-                break
+                return None
             
             #if self.dynamic_visualization:
             #    fb_visualizer.draw_timings(timings, bloated_static_obstacles, start_waypoint.pixel_pos, goal_waypoint.pixel_pos, dynamic_obstacles=dynamic_obstacles, sleep=None)
@@ -301,10 +301,10 @@ class PathFinder:
                         heapq.heappush(heap, (driving_cost, new_waypoint))
             if not heap:
                 rospy.logerr(f"[Planner {self.id}] stopping because heap queue is empty")
-                feedback : FollowerFeedback = FollowerFeedback()
-                feedback.robot_id = self.id
-                feedback.status = feedback.PLANNING_FAILED
-                self.status_publisher.publish(feedback)
+                #feedback : FollowerFeedback = FollowerFeedback()
+                #feedback.robot_id = self.id
+                #feedback.status = feedback.PLANNING_FAILED
+                #self.status_publisher.publish(feedback)
                 return None
         
         rospy.loginfo(f"[Planner {self.id}] stopped after a total of {iterations} iterations")
