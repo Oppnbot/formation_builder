@@ -55,13 +55,50 @@ class CentralController:
         if feedback.status == feedback.LOST_WAYPOINT:
             rospy.loginfo(f"[CController] Replanning because Robot {feedback.robot_id} lost its waypoint.")
             self.build_formation(self.current_formation)
-        if feedback.status == feedback.OUTSIDE_RESERVED_AREA:
+        elif feedback.status == feedback.OUTSIDE_RESERVED_AREA:
             rospy.loginfo(f"[CController] Replanning because Robot {feedback.robot_id} left its reserved area.")
             self.build_formation(self.current_formation)
-        if feedback.status == feedback.PATH_BLOCKED:
+        elif feedback.status == feedback.PATH_BLOCKED:
             rospy.loginfo(f"[CController] Replanning because Robot {feedback.robot_id} Path is blocked.")
             self.build_formation(self.current_formation)
+        elif feedback.status == feedback.PLANNING_FAILED:
+            #self.reorder_priorites(feedback.robot_id)
+            pass
+        else:
+            rospy.logerr(f"[CController] Robot {feedback.robot_id} sent unknown follower feedback: {feedback.status}.")
         return None
+    
+    
+    def reorder_priorites(self, robot_id) -> bool:
+        if robot_id in self.unique_mir_ids:
+            index : int = list(self.unique_mir_ids).index(robot_id)
+            if index == 0:
+                rospy.logerr(f"[CController] Planning failed! Robot {robot_id} can't reach the goal!")
+                return False
+            if self.current_formation is not None and self.current_formation.goal_poses is not None and index < len(self.current_formation.goal_poses):
+                # Swap positions of the failed and highest prio robots #! make this smarter
+                current_order : list[int] = [goal_pos.planner_id for goal_pos in self.current_formation.goal_poses]
+                robot_index = next((i for i, goal_pose in enumerate(self.current_formation.goal_poses) if goal_pose.planner_id == robot_id), -1)
+                current_order.pop(robot_index)
+                current_order.insert(0, robot_id)
+                if robot_index == 0:
+                    rospy.logerr(f"[CController] Planning failed! Robot {robot_id} can't reach the goal!")
+                    return False
+                rospy.loginfo(f"[CController] Set robot {robot_id} to highest Prio")
+                # adjust ids of remaining robots
+                for index, goal_pose in enumerate(self.current_formation.goal_poses):
+                    goal_pose.planner_id = current_order[index]
+                return True
+            else:
+                if self.current_formation is None:
+                    rospy.logerr(f"[CController] Can't change Priority of Robot {robot_id} since current formation is None")
+                elif self.current_formation.goal_poses is None:
+                    rospy.logerr(f"[CController] Can't change Priority of Robot {robot_id} since goal poses are None")
+                else:
+                    rospy.logerr(f"[CController] Can't change Priority of Robot {robot_id} since index: {index} < length of goal poses: {len(self.current_formation.goal_poses)}")
+        else:
+            rospy.logwarn(f"[CController] Can't change Priority of Robot {robot_id} since its not an element in the unique robot ids: {self.unique_mir_ids}")
+        return False
 
 
     def build_formation(self, formation : Formation) -> None:
@@ -76,6 +113,7 @@ class CentralController:
         rospy.loginfo(f"[CController] Received a planning request for {len(formation.goal_poses)} robots.")
         
         planned_trajectories : list[Trajectory] = []
+        failed_planner : int | None = None
         for gp in formation.goal_poses:
             goal_pose : GoalPose = gp
             if goal_pose.planner_id not in self.path_finders.keys():
@@ -87,8 +125,19 @@ class CentralController:
             planned_trajectory : Trajectory | None = self.path_finders[goal_pose.planner_id].search_path(self.grid, goal_pose, planned_trajectories)
             if planned_trajectory is not None:
                 planned_trajectories.append(planned_trajectory)
+            else:
+                failed_planner = goal_pose.planner_id
+                rospy.logwarn(f"[CController] Planner failed {failed_planner}")
+                break
 
         
+
+        if failed_planner is not None:
+            rospy.logwarn(f"[CController] ------------ Planning failed! ({time.time()-start_time:.3f}s) ------------ ")
+            if self.reorder_priorites(failed_planner):
+                rospy.loginfo("[CController] Retrying with reordered priorites...")
+                self.build_formation(self.current_formation)
+            return None
 
         rospy.loginfo(f"[CController] ------------ Planning done! ({time.time()-start_time:.3f}s) ------------ ")
         trajectories : Trajectories = Trajectories()

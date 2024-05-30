@@ -35,7 +35,9 @@ class CostMapReader:
 
         self.costmap_subscribers : list[rospy.Subscriber] = [rospy.Subscriber(f"/mir{robot_id}/move_base_flex/global_costmap/costmap", OccupancyGrid, self.read_costmap, callback_args=robot_id) for robot_id in self.unique_mir_ids]
         self.costmap_update_subscribers : list[rospy.Subscriber] = [rospy.Subscriber(f"/mir{robot_id}/move_base_flex/global_costmap/costmap_updates", OccupancyGridUpdate, self.update_costmap, callback_args=robot_id) for robot_id in self.unique_mir_ids]
-        self.robot_position_subscribers : list[rospy.Subscriber] = [rospy.Subscriber(f'/mir{robot_id}/robot_pose', Pose, self.update_robot_pose, callback_args=robot_id) for robot_id in self.unique_mir_ids]
+        self.robot_position_subscribers_real : list[rospy.Subscriber] = [rospy.Subscriber(f'/mir{robot_id}/robot_pose', Pose, self.update_robot_pose, callback_args=robot_id) for robot_id in self.unique_mir_ids]
+        self.robot_position_subscribers : list[rospy.Subscriber] = [rospy.Subscriber(f'/mir{robot_id}/mir_pose_simple', Pose, self.update_robot_pose, callback_args=robot_id) for robot_id in self.unique_mir_ids]
+
         self.clear_services : list[rospy.ServiceProxy] = [rospy.ServiceProxy(f"/mir{robot_id}/move_base_flex/clear_costmaps", Empty) for robot_id in self.unique_mir_ids]
 
         rospy.Timer(rospy.Duration.from_sec(0.5), self.clear_costmaps, oneshot=False)

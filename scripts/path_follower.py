@@ -84,7 +84,7 @@ class PathFollower:
     def receive_feedback(self, feedback : FollowerFeedback) -> None:
         if feedback.robot_id == self.robot_id:
             return None
-        if feedback.status in [feedback.LOST_WAYPOINT, feedback.OUTSIDE_RESERVED_AREA, feedback.PATH_BLOCKED]:
+        if feedback.status in [feedback.LOST_WAYPOINT, feedback.OUTSIDE_RESERVED_AREA, feedback.PATH_BLOCKED, feedback.PLANNING_FAILED]:
             self.stop_moving = True
             self.stop_robot()
         return None
