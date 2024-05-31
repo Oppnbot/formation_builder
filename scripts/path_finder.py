@@ -29,6 +29,7 @@ from formation_builder.msg import PixelPos, GoalPose, Trajectory, FollowerFeedba
 from formation_builder.msg import Waypoint as WaypointMsg
 from formation_builder.srv import TransformPixelToWorld, TransformPixelToWorldResponse, TransformWorldToPixel, TransformWorldToPixelResponse
 from geometry_msgs.msg import Pose
+from nav_msgs.msg import OccupancyGrid
 
 
 class Waypoint():
@@ -90,8 +91,10 @@ class PathFinder:
         
         self.id: int = planner_id
         self.robot_pose : Pose | None = None
+        self.static_obstacles : OccupancyGrid | None = None
         rospy.Subscriber(f'/mir{self.id}/robot_pose', Pose, self.update_pose)
         rospy.Subscriber(f'/mir{self.id}/mir_pose_simple', Pose, self.update_pose)
+        rospy.Subscriber('/formation_builder/static_obstacles', OccupancyGrid, self.read_static_obstacles)
         self.status_publisher = rospy.Publisher('/formation_builder/follower_status', FollowerFeedback, queue_size=10, latch=True)
         #self.trajectory_publisher : rospy.Publisher = rospy.Publisher('formation_builder/trajectory', Trajectory, queue_size=10, latch=True)
         return None
@@ -99,6 +102,10 @@ class PathFinder:
 
     def update_pose(self, pose: Pose) -> None:
         self.robot_pose = pose
+        return None
+    
+    def read_static_obstacles(self, static_obstacles: OccupancyGrid) -> None:
+        self.static_obstacles = static_obstacles
         return None
 
 
@@ -219,7 +226,11 @@ class PathFinder:
             neighbors += diagonal_neighbors
         if self.allow_knight_moves:
             neighbors += knight_neighbors
-        neighbor_costs : list[float] = [np.hypot(x, y) / self.speed for x, y in neighbors]
+
+        grid_to_real_conversion = 1
+        if self.static_obstacles is not None:
+            grid_to_real_conversion = self.static_obstacles.info.resolution
+        neighbor_costs : list[float] = [np.hypot(x, y) / (self.speed * grid_to_real_conversion) for x, y in neighbors]
 
         loop_time_start = time.time()
         iterations : int = 0
