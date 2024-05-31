@@ -36,16 +36,14 @@ class CentralController:
 
         self.path_finders : dict[int, PathFinder] = {id: PathFinder(id) for id in self.unique_mir_ids}
         #self.path_followers:dict[int, PathFollower] = {id: PathFollower(id) for id in self.unique_mir_ids}
-
-        self.follower_feedback_subscriber : rospy.Subscriber = rospy.Subscriber('formation_builder/follower_status', FollowerFeedback, self.follower_feedback)
-
-        self.formation_subscriber : rospy.Subscriber = rospy.Subscriber("/formation_builder/formation", Formation, self.build_formation)
-        self.map_subscriber : rospy.Subscriber = rospy.Subscriber("formation_builder/map", Image, self.map_callback)
-        self.trajectory_publisher : rospy.Publisher = rospy.Publisher('formation_builder/trajectories', Trajectories, queue_size=10, latch=True)
-
         self.current_formation : Formation | None = None
         self.grid : np.ndarray | None = None
         self.cv_bridge : CvBridge = CvBridge()
+
+        self.follower_feedback_subscriber : rospy.Subscriber = rospy.Subscriber('formation_builder/follower_status', FollowerFeedback, self.follower_feedback)
+        self.formation_subscriber : rospy.Subscriber = rospy.Subscriber("/formation_builder/formation", Formation, self.build_formation)
+        self.map_subscriber : rospy.Subscriber = rospy.Subscriber("formation_builder/map", Image, self.map_callback)
+        self.trajectory_publisher : rospy.Publisher = rospy.Publisher('formation_builder/trajectories', Trajectories, queue_size=10, latch=True)
         return None
     
 
@@ -189,12 +187,13 @@ class CentralController:
 
 
     
-    def generate_formation_position(self, id : int, goal : tuple[float, float], size : float = 1.0) -> GoalPose:
+    def generate_formation_position(self, id : int, goal : tuple[float, float, float], size : float = 1.0) -> GoalPose:
         rospy.loginfo(f"[CController] Generating request for robot {id}")
         request : GoalPose = GoalPose()
         request.planner_id = id
         request.goal = Pose()
-        request.goal.position.x, request.goal.position.y = goal
+        request.goal.position.x, request.goal.position.y = goal[0], goal[1]
+        request.goal.orientation.z = goal[2]
         request.robot_size = size
         return request
     
@@ -206,8 +205,20 @@ if __name__ == '__main__':
 
     test_formation : Formation = Formation()
     test_formation.goal_poses = []
+    east : float = 0.0
+    west : float = np.pi
+    north : float = np.pi/2
+    south : float = -np.pi/2
+
     #goal_positions : list[tuple[float, float]] = [(50, 20), (50, 19), (30, 18), (51.1, 20)]
-    goal_positions : list[tuple[float, float]] = [(36, 40)] # [(36, 37), (33, 39.5) , (36, 39.5), (33, 37)] #[(35, 30), (35, 32.5) , (38.5, 32.5), (38.5, 30)]
+
+    formation_square = [(36, 37, north), (33, 39.5, north) , (36, 39.5, north), (33, 37, north)]
+    formation_line_north = [(31, 38, north), (33.5, 38, north), (36, 38, north), (38.5, 38, north)]
+    formation_line_north_scrambeled = [(33.5, 38, north),(38.5, 38, north), (36, 38, north), (31, 38, north)]
+    formation_line_north_reversed = [ (38.5, 38, north), (36, 38, north),(33.5, 38, north), (31, 38, north)]
+    formation_line_south = [(31, 34, north), (33.5, 34, north), (36, 34, north), (38.5, 34, north)]
+    goal_positions : list[tuple[float, float, float]] = formation_line_south
+
     for index, goal_position in enumerate(goal_positions):
         test_formation.goal_poses.append(central_controller.generate_formation_position(index+1, goal_position, size=1.0))
 
