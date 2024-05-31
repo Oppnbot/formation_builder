@@ -86,7 +86,7 @@ class PathFinder:
         self.check_dynamic_obstacles : bool = True
         self.dynamic_visualization : bool = False # publishes timing map after every step, very expensive
         self.kernel_size : int = 3 #!kernel size -> defines the safety margins for dynamic and static obstacles; grid_size * kernel_size = robot_size
-        self.speed : float = 0.45
+        self.speed : float = 0.25
         # -------- CONFIG END --------
         
         self.id: int = planner_id
@@ -230,7 +230,6 @@ class PathFinder:
         grid_to_real_conversion = 1
         if self.static_obstacles is not None:
             grid_to_real_conversion = self.static_obstacles.info.resolution
-        rospy.loginfo(f"[Planner {self.id}] grid_to_real_conversion: {grid_to_real_conversion}")
         neighbor_costs : list[float] = [(np.hypot(x, y) * grid_to_real_conversion) / (self.speed ) for x, y in neighbors]
 
         loop_time_start = time.time()
