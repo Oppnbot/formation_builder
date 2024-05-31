@@ -230,7 +230,8 @@ class PathFinder:
         grid_to_real_conversion = 1
         if self.static_obstacles is not None:
             grid_to_real_conversion = self.static_obstacles.info.resolution
-        neighbor_costs : list[float] = [np.hypot(x, y) / (self.speed * grid_to_real_conversion) for x, y in neighbors]
+        rospy.loginfo(f"[Planner {self.id}] grid_to_real_conversion: {grid_to_real_conversion}")
+        neighbor_costs : list[float] = [(np.hypot(x, y) * grid_to_real_conversion) / (self.speed ) for x, y in neighbors]
 
         loop_time_start = time.time()
         iterations : int = 0
