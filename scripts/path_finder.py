@@ -86,7 +86,7 @@ class PathFinder:
         self.check_dynamic_obstacles : bool = True
         self.dynamic_visualization : bool = False # publishes timing map after every step, very expensive
         self.kernel_size : int = 3 #!kernel size -> defines the safety margins for dynamic and static obstacles; grid_size * kernel_size = robot_size
-        self.speed : float = 0.25
+        self.speed : float = 0.2
         # -------- CONFIG END --------
         
         self.id: int = planner_id
