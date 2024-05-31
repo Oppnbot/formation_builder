@@ -75,8 +75,8 @@ class Waypoint():
 class PathFinder:
     def __init__(self, planner_id : int = 0):
         # -------- CONFIG START --------
-        self.static_time_tolerance: float = 10.0     # [s] estimation of how long the robot needs to travel between two grid spaces. will add a static length to the "snakes"
-        self.dynamic_time_tolerance : float = 1.2   # [s] estimation of motion uncertainty. lets "snakes" grow over time
+        self.static_time_tolerance: float = 15.0     # [s] estimation of how long the robot needs to travel between two grid spaces. will add a static length to the "snakes"
+        self.dynamic_time_tolerance : float = 1.3   # [s] estimation of motion uncertainty. lets "snakes" grow over time
 
         self.allow_straights : bool = True   # allows the following movements: 0°, 90°, 180°, 380° 
         self.allow_diagonals : bool = True   # allows the following movements: 45°, 135°, 225°, 315°
@@ -85,7 +85,7 @@ class PathFinder:
         self.check_dynamic_obstacles : bool = True
         self.dynamic_visualization : bool = False # publishes timing map after every step, very expensive
         self.kernel_size : int = 3 #!kernel size -> defines the safety margins for dynamic and static obstacles; grid_size * kernel_size = robot_size
-        self.speed : float = 0.275
+        self.speed : float = 0.45
         # -------- CONFIG END --------
         
         self.id: int = planner_id

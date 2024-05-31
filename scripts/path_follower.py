@@ -29,10 +29,10 @@ class PathFollower:
         self.costmap : OccupancyGrid | None = None
 
         # ---- Config Zone ----
-        self.lookahead_distance : float = 1.0   # [m] higher distance -> smoother curves when driving but might leave path.
+        self.lookahead_distance : float = 1.5   # [m] higher distance -> smoother curves when driving but might leave path.
         self.lookahead_time : float = 10        # [s] higher value -> earlier replanning when a collision with a previously unknown obstacle is inbound. please note that it may take a few seconds to update the obstacles, so >= 5s is advised
-        self.max_linear_speed : float = 0.15     # [m/s] max driving speed
-        self.max_angular_speed : float = 0.2    # [rad/s] max rotation speed
+        self.max_linear_speed : float = 0.50  #0.15   # [m/s] max driving speed
+        self.max_angular_speed : float = 1.0  #0.2   # [rad/s] max rotation speed
         
         self.goal_tolerance : float = 0.05 # [m] distance at which the goal position is considered to be reached
         self.rotation_tolerance : float = 0.002 # [rad] angle at which the goal rotation is considered to be reached
