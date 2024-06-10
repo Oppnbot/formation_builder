@@ -11,7 +11,7 @@
   
   <!-- Choose group for creating a namespace environment if you want to add multiple nodes/includes to that namespace easily -->
   <group ns="$(arg robot1_name)">
-    <include file="$(find mir_launch_sim)/launch/mir_200.launch">
+    <include file="$(find mir_launch_sim)/launch/mir_600.launch">
         <arg name="robot_x"     default="26.0" />
         <arg name="robot_y"     default="26.0" />
         <arg name="robot_yaw"   default="0.0" /> 
@@ -21,9 +21,9 @@
   </group> 
 
   <!-- Just add the ns parameter to the tag to insert this one node/include in the namespace -->
-  <include file="$(find mir_launch_sim)/launch/mir_200.launch" ns="$(arg robot2_name)">
+  <include file="$(find mir_launch_sim)/launch/mir_600.launch" ns="$(arg robot2_name)">
       <arg name="robot_x"     default="26.0" />
-      <arg name="robot_y"     default="27.0" />
+      <arg name="robot_y"     default="28.0" />
       <arg name="robot_yaw"   default="0.0" /> 
       <arg name="tf_prefix"   default="$(arg robot2_name)" />       
       <arg name="model_name"  default="$(arg robot2_name)"/>
@@ -31,8 +31,8 @@
 
 
   <!-- Just add the ns parameter to the tag to insert this one node/include in the namespace -->
-  <include file="$(find mir_launch_sim)/launch/mir_200.launch" ns="$(arg robot3_name)">
-      <arg name="robot_x"     default="27.0" />
+  <include file="$(find mir_launch_sim)/launch/mir_600.launch" ns="$(arg robot3_name)">
+      <arg name="robot_x"     default="28.0" />
       <arg name="robot_y"     default="26.0" />
       <arg name="robot_yaw"   default="0.0" /> 
       <arg name="tf_prefix"   default="$(arg robot3_name)" />       
@@ -40,9 +40,9 @@
   </include>
   
 <!-- Just add the ns parameter to the tag to insert this one node/include in the namespace -->
-  <include file="$(find mir_launch_sim)/launch/mir_200.launch" ns="$(arg robot4_name)">
-      <arg name="robot_x"     default="27.0" />
-      <arg name="robot_y"     default="27.0" />
+  <include file="$(find mir_launch_sim)/launch/mir_600.launch" ns="$(arg robot4_name)">
+      <arg name="robot_x"     default="28.0" />
+      <arg name="robot_y"     default="28.0" />
       <arg name="robot_yaw"   default="0.0" /> 
       <arg name="tf_prefix"   default="$(arg robot4_name)" />       
       <arg name="model_name"  default="$(arg robot4_name)"/>
